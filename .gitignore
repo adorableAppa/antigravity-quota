@@ -1,0 +1,22 @@
+# Build outputs
+bin/
+obj/
+
+# Publish output
+dist*/
+
+# IDE / Editor
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+err.txt
+out.txt
