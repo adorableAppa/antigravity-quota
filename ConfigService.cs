@@ -10,6 +10,7 @@ namespace AntigravityQuota
     {
         public string version { get; set; } = "2.0";
         public string? activeAccount { get; set; }
+        public string? theme { get; set; }
     }
 
     public class AccountTokenInfo

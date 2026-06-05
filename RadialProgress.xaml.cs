@@ -44,7 +44,7 @@ namespace AntigravityQuota
             }
         }
 
-        private void Redraw()
+        public void Redraw()
         {
             if (!IsLoaded || RendererImage == null) return;
 
@@ -76,8 +76,13 @@ namespace AntigravityQuota
                             gSrc.Clear(System.Drawing.Color.Transparent);
                             gSrc.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-                            // Draw track circle (semi-transparent white)
-                            using (var trackPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(15, 255, 255, 255), 8))
+                            // Draw track circle (semi-transparent based on theme)
+                            var currentTheme = ModernWpf.ThemeManager.GetActualTheme(this);
+                            var trackColor = currentTheme == ModernWpf.ElementTheme.Light
+                                ? System.Drawing.Color.FromArgb(20, 0, 0, 0)
+                                : System.Drawing.Color.FromArgb(15, 255, 255, 255);
+
+                            using (var trackPen = new System.Drawing.Pen(trackColor, 8))
                             {
                                 gSrc.DrawEllipse(trackPen, 6, 6, w - 12, h - 12);
                             }

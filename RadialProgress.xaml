@@ -5,7 +5,7 @@
     <Grid>
         <Image x:Name="RendererImage" Stretch="Uniform" />
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <TextBlock x:Name="PercentText" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="PercentText" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" HorizontalAlignment="Center"/>
             <TextBlock Text="USED" FontSize="8" FontWeight="SemiBold" Foreground="#8e8e93" HorizontalAlignment="Center" Margin="0,2,0,0"/>
         </StackPanel>
     </Grid>

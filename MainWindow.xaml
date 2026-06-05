@@ -6,8 +6,8 @@
         Title="Antigravity Quota Dashboard" Height="850" Width="1280"
         MinHeight="700" MinWidth="1000"
         ui:WindowHelper.UseModernWindowStyle="True"
-        ui:ThemeManager.RequestedTheme="Dark"
-        Background="#0b0914"
+        ui:ThemeManager.RequestedTheme="Default"
+        Background="{DynamicResource WindowBgBrush}"
         WindowStartupLocation="CenterScreen"
         Icon="logo.png">
     
@@ -15,10 +15,34 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
 
+        <!-- Theme Brushes (Default to Catppuccin Mocha) -->
+        <SolidColorBrush x:Key="WindowBgBrush" Color="#11111b"/>
+        <SolidColorBrush x:Key="CardBgBrush" Color="#1E1E2E"/>
+        <SolidColorBrush x:Key="CardBorderBrush" Color="#313244"/>
+        <SolidColorBrush x:Key="HeaderButtonBgBrush" Color="#181825"/>
+        <SolidColorBrush x:Key="AccountCapsuleBgBrush" Color="#181825"/>
+        <SolidColorBrush x:Key="AccountCapsuleBorderBrush" Color="#313244"/>
+        <SolidColorBrush x:Key="TextTitleBrush" Color="#CDD6F4"/>
+        <SolidColorBrush x:Key="TextSubtitleBrush" Color="#A6ADC8"/>
+        <SolidColorBrush x:Key="ModalBgBrush" Color="#c011111b"/>
+        <SolidColorBrush x:Key="AccountItemBgBrush" Color="#313244"/>
+        <SolidColorBrush x:Key="AccountItemBorderBrush" Color="#313244"/>
+
+        <!-- Progress and Accent Brushes -->
+        <SolidColorBrush x:Key="ProgressGradientStartBrush" Color="#CBA6F7"/>
+        <SolidColorBrush x:Key="ProgressGradientEndBrush" Color="#89DCEB"/>
+        <SolidColorBrush x:Key="ProgressExhaustedBrush" Color="#F38BA8"/>
+        <SolidColorBrush x:Key="ProgressWarningBrush" Color="#FAB387"/>
+
+        <!-- Accent Colors -->
+        <Color x:Key="ProgressGradientStartColor">#CBA6F7</Color>
+        <Color x:Key="ProgressGradientEndColor">#89DCEB</Color>
+        <Color x:Key="ProgressGreenColor">#A6E3A1</Color>
+
         <!-- Glassmorphism Card Style -->
         <Style x:Key="GlassCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="#131024"/>
-            <Setter Property="BorderBrush" Value="#25213b"/>
+            <Setter Property="Background" Value="{DynamicResource CardBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="12"/>
             <Setter Property="Padding" Value="24"/>
@@ -28,8 +52,8 @@
             <Setter Property="Height" Value="38"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="ui:ControlHelper.CornerRadius" Value="8"/>
-            <Setter Property="BorderBrush" Value="#25213b"/>
-            <Setter Property="Background" Value="#1a1633"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource HeaderButtonBgBrush}"/>
         </Style>
     </Window.Resources>
 
@@ -72,10 +96,10 @@
                     <!-- Brand Title -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                         <!-- Logo Placeholder -->
-                        <Path Data="M12,2L2,12H5V21H19V12H22L12,2ZM7,14L12,9L17,14H7Z" Fill="#8b5cf6" Width="32" Height="32" Stretch="Uniform" Margin="0,0,12,0"/>
+                        <Path Data="M12,2L2,12H5V21H19V12H22L12,2ZM7,14L12,9L17,14H7Z" Fill="{DynamicResource ProgressGradientStartBrush}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,12,0"/>
                         <StackPanel>
-                            <TextBlock Text="Antigravity Quota" FontSize="20" FontWeight="Bold" Foreground="White"/>
-                            <TextBlock Text="Model Quota Hub" FontSize="11" Foreground="#8e8e93" FontWeight="SemiBold"/>
+                            <TextBlock Text="Antigravity Quota" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
+                            <TextBlock Text="Model Quota Hub" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}" FontWeight="SemiBold"/>
                         </StackPanel>
                     </StackPanel>
 
@@ -84,9 +108,14 @@
 
                         <!-- Autocomplete models toggle -->
                         <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-                            <TextBlock Text="SHOW AUTOCOMPLETE" FontSize="9" FontWeight="Bold" Foreground="#8e8e93" Margin="0,0,0,4"/>
+                            <TextBlock Text="SHOW AUTOCOMPLETE" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,0,0,4"/>
                             <ui:ToggleSwitch x:Name="AutocompleteToggle" IsOn="False" Toggled="OnConfigChanged" OffContent="" OnContent="" Height="32" VerticalAlignment="Center"/>
                         </StackPanel>
+
+                        <!-- Settings Button -->
+                        <Button x:Name="SettingsButton" Style="{StaticResource HeaderButtonStyle}" Margin="0,8,16,0" Click="OnSettingsButtonClicked" ToolTip="Settings">
+                            <ui:SymbolIcon Symbol="Setting" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                        </Button>
 
                         <!-- Sync Button -->
                         <Button x:Name="SyncButton" Style="{StaticResource HeaderButtonStyle}" Margin="0,8,16,0" Click="OnSyncButtonClicked">
@@ -97,12 +126,12 @@
                         </Button>
 
                         <!-- Account Capsule -->
-                        <Border Background="#1f1a3a" CornerRadius="8" BorderBrush="#352e5c" BorderThickness="1" Height="38" Padding="12,0" Margin="0,8,0,0" Cursor="Hand" MouseLeftButtonDown="OnManageAccountsBorderClicked" ToolTip="Manage Google Accounts">
+                        <Border Background="{DynamicResource AccountCapsuleBgBrush}" CornerRadius="8" BorderBrush="{DynamicResource AccountCapsuleBorderBrush}" BorderThickness="1" Height="38" Padding="12,0" Margin="0,8,0,0" Cursor="Hand" MouseLeftButtonDown="OnManageAccountsBorderClicked" ToolTip="Manage Google Accounts">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Ellipse Width="8" Height="8" Fill="#06b6d4" Margin="0,0,8,0"/>
-                                <TextBlock x:Name="ActiveEmailText" Text="Not Logged In" Foreground="White" VerticalAlignment="Center" FontWeight="Medium" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
+                                <Ellipse Width="8" Height="8" Fill="{DynamicResource ProgressGradientEndBrush}" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="ActiveEmailText" Text="Not Logged In" Foreground="{DynamicResource TextTitleBrush}" VerticalAlignment="Center" FontWeight="Medium" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
                                 <Button Background="Transparent" BorderThickness="0" Padding="0" Margin="8,0,0,0" Width="20" Height="20" Click="OnManageAccountsClicked" Focusable="False">
-                                    <ui:SymbolIcon Symbol="People" Foreground="#8e8e93"/>
+                                    <ui:SymbolIcon Symbol="People" Foreground="{DynamicResource TextSubtitleBrush}"/>
                                 </Button>
                             </StackPanel>
                         </Border>
@@ -134,9 +163,9 @@
                                 </Grid.RowDefinitions>
                                 
                                 <DockPanel Grid.Row="0" Margin="0,0,0,16">
-                                    <TextBlock Text="Prompt Credits" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
-                                    <Border Background="#21153d" BorderBrush="#3b2075" BorderThickness="1" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right">
-                                        <TextBlock Text="MONTHLY POOL" FontSize="9" FontWeight="Bold" Foreground="#a78bfa"/>
+                                    <TextBlock Text="Prompt Credits" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" VerticalAlignment="Center"/>
+                                    <Border Background="{DynamicResource HeaderButtonBgBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right">
+                                        <TextBlock Text="MONTHLY POOL" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ProgressGradientStartBrush}"/>
                                     </Border>
                                 </DockPanel>
 
@@ -145,11 +174,11 @@
                                     <local:RadialProgress x:Name="CreditsRadial" Width="120" Height="120" Margin="0,0,32,0"/>
                                     
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="AVAILABLE" FontSize="10" FontWeight="Bold" Foreground="#8e8e93"/>
-                                        <TextBlock x:Name="CreditsAvailableText" Text="0" FontSize="28" FontWeight="Bold" Foreground="#06b6d4" Margin="0,2,0,12"/>
+                                        <TextBlock Text="AVAILABLE" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                        <TextBlock x:Name="CreditsAvailableText" Text="0" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource ProgressGradientEndBrush}" Margin="0,2,0,12"/>
                                         
-                                        <TextBlock Text="TOTAL MONTHLY LIMIT" FontSize="10" FontWeight="Bold" Foreground="#8e8e93"/>
-                                        <TextBlock x:Name="CreditsMonthlyText" Text="0" FontSize="20" FontWeight="SemiBold" Foreground="White" Margin="0,2,0,0"/>
+                                        <TextBlock Text="TOTAL MONTHLY LIMIT" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                        <TextBlock x:Name="CreditsMonthlyText" Text="0" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextTitleBrush}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Grid>
@@ -161,45 +190,28 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <DockPanel Grid.Row="0" Margin="0,0,0,16">
-                                    <TextBlock Text="Sync Status" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Sync Status" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" VerticalAlignment="Center"/>
                                     <Border x:Name="StatusBadge" Background="#162e24" BorderBrush="#205c43" BorderThickness="1" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right">
                                         <TextBlock x:Name="StatusBadgeText" Text="Standby" FontSize="9" FontWeight="Bold" Foreground="#34d399"/>
                                     </Border>
                                 </DockPanel>
 
-                                <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,0,0,12">
+                                <StackPanel Grid.Row="1" VerticalAlignment="Center">
                                     <DockPanel Margin="0,0,0,8">
-                                        <TextBlock Text="Last Checked:" Foreground="#8e8e93" FontSize="13"/>
-                                        <TextBlock x:Name="LastCheckedText" Text="Never" Foreground="White" FontSize="13" FontWeight="Medium" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="Last Checked:" Foreground="{DynamicResource TextSubtitleBrush}" FontSize="13"/>
+                                        <TextBlock x:Name="LastCheckedText" Text="Never" Foreground="{DynamicResource TextTitleBrush}" FontSize="13" FontWeight="Medium" HorizontalAlignment="Right"/>
                                     </DockPanel>
                                     <DockPanel Margin="0,0,0,8">
-                                        <TextBlock Text="Active Plan Type:" Foreground="#8e8e93" FontSize="13"/>
-                                        <TextBlock x:Name="PlanTypeText" Text="None" Foreground="White" FontSize="13" FontWeight="Medium" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="Active Plan Type:" Foreground="{DynamicResource TextSubtitleBrush}" FontSize="13"/>
+                                        <TextBlock x:Name="PlanTypeText" Text="None" Foreground="{DynamicResource TextTitleBrush}" FontSize="13" FontWeight="Medium" HorizontalAlignment="Right"/>
                                     </DockPanel>
                                     <DockPanel>
-                                        <TextBlock Text="Antigravity Service:" Foreground="#8e8e93" FontSize="13"/>
+                                        <TextBlock Text="Antigravity Service:" Foreground="{DynamicResource TextSubtitleBrush}" FontSize="13"/>
                                         <TextBlock x:Name="ServiceStatusText" Text="Disconnected" Foreground="#f87171" FontSize="13" FontWeight="Medium" HorizontalAlignment="Right"/>
                                     </DockPanel>
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button x:Name="ManageAccountsButton" Style="{StaticResource HeaderButtonStyle}" Margin="0,0,8,0" Click="OnManageAccountsClicked" ToolTip="Manage Google Accounts" Visibility="Collapsed">
-                                        <StackPanel Orientation="Horizontal">
-                                            <ui:SymbolIcon Symbol="People" Margin="0,0,8,0"/>
-                                            <TextBlock Text="Accounts"/>
-                                        </StackPanel>
-                                    </Button>
-                                    <Button x:Name="OAuthConnectButton" Style="{StaticResource HeaderButtonStyle}" Click="OnOAuthConnectClicked">
-                                        <StackPanel Orientation="Horizontal">
-                                            <!-- Google Icon Path -->
-                                            <Path Data="M12.24,10.285V14.4h6.887c-.648,2.41-2.519,4.114-5.136,4.114a6.273,6.273,0,1,1,.003-12.545c1.677,0,3.128.654,4.253,1.72l3.242-3.244C19.16,2.378,16.002,1,12.24,1,6.033,1,1,6.033,1,12.24s5.033,11.24,11.24,11.24c6.478,0,11.24-4.551,11.24-11.24,0-.763-.085-1.5-.24-2.185H12.24z" Fill="White" Width="14" Height="14" Margin="0,0,8,0" Stretch="Uniform"/>
-                                            <TextBlock Text="Connect Google Account"/>
-                                        </StackPanel>
-                                    </Button>
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -208,8 +220,8 @@
                     <!-- Models Quota Section -->
                     <StackPanel Grid.Row="1">
                         <DockPanel Margin="0,0,0,16">
-                            <TextBlock Text="AI Model Limits" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Bottom"/>
-                            <TextBlock x:Name="ModelCountText" Text="0 models tracked" FontSize="13" Foreground="#8e8e93" HorizontalAlignment="Right" VerticalAlignment="Bottom" FontWeight="Medium"/>
+                            <TextBlock Text="AI Model Limits" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" VerticalAlignment="Bottom"/>
+                            <TextBlock x:Name="ModelCountText" Text="0 models tracked" FontSize="13" Foreground="{DynamicResource TextSubtitleBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom" FontWeight="Medium"/>
                         </DockPanel>
 
                         <!-- Models Loading State / List -->
@@ -217,9 +229,9 @@
                             <!-- Empty View -->
                             <Border x:Name="EmptyStateCard" Style="{StaticResource GlassCardStyle}" Padding="48" Visibility="Collapsed">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <ui:SymbolIcon Symbol="OutlineStar" Height="48" Width="48" Margin="0,0,0,16" Foreground="#8e8e93"/>
-                                    <TextBlock Text="No Quota Data Found" FontSize="16" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="Login to Google or verify that the Antigravity LSP Service is running locally in your IDE." Foreground="#8e8e93" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" MaxWidth="320"/>
+                                    <ui:SymbolIcon Symbol="OutlineStar" Height="48" Width="48" Margin="0,0,0,16" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                    <TextBlock Text="No Quota Data Found" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Login to Google or verify that the Antigravity LSP Service is running locally in your IDE." Foreground="{DynamicResource TextSubtitleBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" MaxWidth="320"/>
                                 </StackPanel>
                             </Border>
 
@@ -243,35 +255,46 @@
                                                 <!-- Card Header -->
                                                 <DockPanel Grid.Row="0" Margin="0,0,0,16">
                                                     <StackPanel>
-                                                        <TextBlock Text="{Binding Label}" FontSize="14" FontWeight="Bold" Foreground="White" TextTrimming="CharacterEllipsis"/>
-                                                        <TextBlock Text="{Binding ModelId}" FontSize="10" Foreground="#8e8e93" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding Label}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding ModelId}" FontSize="10" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                                                     </StackPanel>
                                                     
                                                     <!-- Optional Autocomplete Badge -->
-                                                    <Border Visibility="{Binding IsAutocompleteOnly, Converter={StaticResource BooleanToVisibilityConverter}}" Background="#21202e" BorderBrush="#3f3b5c" BorderThickness="1" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right" VerticalAlignment="Top">
-                                                        <TextBlock Text="AUTOCOMPLETE" FontSize="8" FontWeight="Bold" Foreground="#a78bfa"/>
+                                                    <Border Visibility="{Binding IsAutocompleteOnly, Converter={StaticResource BooleanToVisibilityConverter}}" Background="{DynamicResource HeaderButtonBgBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                                        <TextBlock Text="AUTOCOMPLETE" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource ProgressGradientStartBrush}"/>
                                                     </Border>
                                                 </DockPanel>
 
                                                 <!-- Card Progress -->
                                                 <StackPanel Grid.Row="1" Margin="0,0,0,16">
                                                     <DockPanel Margin="0,0,0,8">
-                                                        <TextBlock Text="{Binding DisplayPercentage}" FontSize="13" FontWeight="SemiBold" Foreground="{Binding TextColorBrush}"/>
-                                                        <TextBlock Text="SESSION LIMIT" FontSize="9" Foreground="#8e8e93" HorizontalAlignment="Right" VerticalAlignment="Bottom" FontWeight="Bold"/>
+                                                         <TextBlock Text="{Binding DisplayPercentage}" FontSize="13" FontWeight="SemiBold">
+                                                             <TextBlock.Style>
+                                                                 <Style TargetType="TextBlock">
+                                                                     <Setter Property="Foreground" Value="{DynamicResource TextTitleBrush}"/>
+                                                                     <Style.Triggers>
+                                                                         <DataTrigger Binding="{Binding Model.IsExhausted}" Value="True">
+                                                                             <Setter Property="Foreground" Value="#f87171"/>
+                                                                         </DataTrigger>
+                                                                     </Style.Triggers>
+                                                                 </Style>
+                                                             </TextBlock.Style>
+                                                         </TextBlock>
+                                                         <TextBlock Text="SESSION LIMIT" FontSize="9" Foreground="{DynamicResource TextSubtitleBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom" FontWeight="Bold"/>
                                                     </DockPanel>
                                                     <!-- Progress Bar -->
                                                     <ProgressBar Value="{Binding ProgressBarValue, Mode=OneWay}" Height="6" Maximum="100" Foreground="{Binding ProgressBrush}" Background="#15ffffff" BorderThickness="0"/>
                                                 </StackPanel>
 
                                                 <!-- Card Footer -->
-                                                <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="#15ffffff" Padding="0,12,0,0">
+                                                <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource AccountItemBorderBrush}" Padding="0,12,0,0">
                                                     <DockPanel>
                                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                             <ui:SymbolIcon Symbol="Clock" Foreground="{Binding TimerColorBrush}" Margin="0,0,6,0" Width="14" Height="14"/>
                                                             <TextBlock Text="{Binding DisplayTimeLeft}" Foreground="{Binding TimerColorBrush}" FontSize="12" FontWeight="Medium"/>
                                                         </StackPanel>
                                                         
-                                                        <Border Background="#1a1c38" CornerRadius="4" Padding="4" HorizontalAlignment="Right" Width="20" Height="20">
+                                                        <Border Background="{DynamicResource HeaderButtonBgBrush}" CornerRadius="4" Padding="4" HorizontalAlignment="Right" Width="20" Height="20">
                                                             <!-- Sync Mode Indicator -->
                                                             <Path Data="{Binding MethodIconPath}" Fill="{Binding ProgressBrush}" Stretch="Uniform"/>
                                                         </Border>
@@ -288,62 +311,360 @@
             </ScrollViewer>
         </Grid>
 
-        <!-- 3. Accounts Management Dialog Overlay (Flyout / Modal) -->
-        <Grid x:Name="AccountsModal" Visibility="Collapsed" Background="#c0040308">
-            <Border Style="{StaticResource GlassCardStyle}" Width="450" Height="500" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16">
+
+
+        <!-- 4. Settings Dialog Overlay (Flyout / Modal) -->
+        <Grid x:Name="SettingsModal" Visibility="Collapsed" Background="{DynamicResource ModalBgBrush}">
+            <Border Style="{StaticResource GlassCardStyle}" Width="650" Height="480" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="0">
                 <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                    <DockPanel Grid.Row="0" Margin="0,0,0,16">
-                        <TextBlock Text="Manage Google Accounts" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
-                        <Button Background="Transparent" BorderThickness="0" HorizontalAlignment="Right" Padding="4" Click="OnCloseAccountsModalClicked">
-                            <ui:SymbolIcon Symbol="Cancel" Foreground="#8e8e93"/>
-                        </Button>
-                    </DockPanel>
+                    <!-- Left Sidebar (Navigation) -->
+                    <Border Grid.Column="0" Background="{DynamicResource HeaderButtonBgBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,1,0" CornerRadius="16,0,0,16">
+                        <Grid Margin="12,24,12,16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                    <!-- Accounts List -->
-                    <ScrollViewer Grid.Row="1" Margin="0,0,0,16">
-                        <ItemsControl x:Name="AccountsListControl">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#19ffffff" BorderBrush="#15ffffff" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Row="0" Text="Settings" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" Margin="8,0,0,24"/>
 
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="{Binding Email}" FontSize="13" FontWeight="Bold" Foreground="White" TextTrimming="CharacterEllipsis"/>
-                                                <!-- Active Badge -->
-                                                <Border Visibility="{Binding IsActive, Converter={StaticResource BooleanToVisibilityConverter}}" Background="#162e24" BorderBrush="#205c43" BorderThickness="1" CornerRadius="4" Padding="4,1" HorizontalAlignment="Left" Margin="0,4,0,0">
-                                                    <TextBlock Text="Active" FontSize="8" FontWeight="Bold" Foreground="#34d399"/>
+                            <StackPanel Grid.Row="1">
+                                <!-- Appearance Tab Button -->
+                                <Button x:Name="AppearanceTabBtn" Style="{StaticResource HeaderButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,8" Margin="0,0,0,8" Click="OnAppearanceTabClicked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ui:SymbolIcon Symbol="Setting" Margin="0,0,8,0" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                        <TextBlock Text="Appearance" Foreground="{DynamicResource TextTitleBrush}"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- Accounts Tab Button -->
+                                <Button x:Name="AccountsTabBtn" Style="{StaticResource HeaderButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,8" Margin="0,0,0,8" Click="OnAccountsTabClicked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ui:SymbolIcon Symbol="ContactInfo" Margin="0,0,8,0" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                        <TextBlock Text="Accounts" Foreground="{DynamicResource TextTitleBrush}"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- About Tab Button -->
+                                <Button x:Name="AboutTabBtn" Style="{StaticResource HeaderButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,8" Click="OnAboutTabClicked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ui:SymbolIcon Symbol="Help" Margin="0,0,8,0" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                        <TextBlock Text="About" Foreground="{DynamicResource TextTitleBrush}"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Right Content Area -->
+                    <Grid Grid.Column="1" Margin="24">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header with Close Button (Shared) -->
+                        <DockPanel Grid.Row="0" Margin="0,0,0,20">
+                            <TextBlock x:Name="SettingsTabTitleText" Text="Appearance" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" VerticalAlignment="Center"/>
+                            <Button Background="Transparent" BorderThickness="0" HorizontalAlignment="Right" Padding="4" Click="OnCloseSettingsModalClicked">
+                                <ui:SymbolIcon Symbol="Cancel" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                            </Button>
+                        </DockPanel>
+
+                        <!-- Tab Content Grid -->
+                        <Grid Grid.Row="1">
+                            <!-- Appearance Tab View -->
+                            <Grid x:Name="AppearanceSettingsView" Visibility="Visible">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Theme Flavor" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,0,0,8"/>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,-8,0" Padding="0,0,8,0">
+                                    <UniformGrid Columns="2">
+                                        <!-- Catppuchin Mocha Card -->
+                                        <Border x:Name="MochaCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Catppuchin Mocha" Background="#1E1E2E" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Catppuchin Mocha" FontSize="12.5" FontWeight="Bold" Foreground="#CDD6F4" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#CBA6F7" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#89DCEB" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#A6E3A1" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#F38BA8"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Catppuchin Macchiato Card -->
+                                        <Border x:Name="MacchiatoCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Catppuchin Macchiato" Background="#24273A" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Catppuchin Macchiato" FontSize="12.5" FontWeight="Bold" Foreground="#CAD3F5" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#C6A0F6" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#91D7E3" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#A6DA95" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#ED8796"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Catppuchin Frappé Card -->
+                                        <Border x:Name="FrappeCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Catppuchin Frappé" Background="#303446" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Catppuchin Frappé" FontSize="12.5" FontWeight="Bold" Foreground="#C6D0F5" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#CA9EE6" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#99D1DB" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#A6D189" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#E78284"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Catppuchin Latté Card -->
+                                        <Border x:Name="LatteCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Catppuchin Latté" Background="#EFF1F5" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Catppuchin Latté" FontSize="12.5" FontWeight="Bold" Foreground="#4C4F69" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#8839EF" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#04A5E5" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#40A02B" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#D20F39"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Dracula Classic Card -->
+                                        <Border x:Name="DraculaClassicCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Dracula Classic" Background="#282A36" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Dracula Classic" FontSize="12.5" FontWeight="Bold" Foreground="#F8F8F2" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#BD93F9" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#8BE9FD" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#50FA7B" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#FF5555"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Alucard Classic Card -->
+                                        <Border x:Name="AlucardClassicCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Alucard Classic" Background="#FFFBEB" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Alucard Classic" FontSize="12.5" FontWeight="Bold" Foreground="#1F1F1F" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#644AC9" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#036A96" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#14710A" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#CB3A2A"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Gruvbox Dark Card -->
+                                        <Border x:Name="GruvboxDarkCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Gruvbox Dark" Background="#282828" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Gruvbox Dark" FontSize="12.5" FontWeight="Bold" Foreground="#FBF1C7" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#FABD2F" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#83A598" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#B8BB26" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#FB4934"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Gruvbox Light Card -->
+                                        <Border x:Name="GruvboxLightCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Gruvbox Light" Background="#FBF1C7" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Gruvbox Light" FontSize="12.5" FontWeight="Bold" Foreground="#282828" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#B57614" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#076678" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#79740E" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#9D0006"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Nord Card -->
+                                        <Border x:Name="NordCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Nord" Background="#2E3440" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Nord" FontSize="12.5" FontWeight="Bold" Foreground="#ECEFF4" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#88C0D0" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#81A1C1" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#A3BE8C" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#BF616A"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Nord Light Card -->
+                                        <Border x:Name="NordLightCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Nord Light" Background="#ECEFF4" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Nord Light" FontSize="12.5" FontWeight="Bold" Foreground="#2E3440" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#5E81AC" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#81A1C1" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#A3BE8C" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#BF616A"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Rosé Pine Card -->
+                                        <Border x:Name="RosePineCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Rosé Pine" Background="#191724" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Rosé Pine" FontSize="12.5" FontWeight="Bold" Foreground="#E0DEF4" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#C4A7E7" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#31748F" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#EBBCBA" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#EB6F92"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Rosé Pine Moon Card -->
+                                        <Border x:Name="RosePineMoonCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Rosé Pine Moon" Background="#232136" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Rosé Pine Moon" FontSize="12.5" FontWeight="Bold" Foreground="#E0DEF4" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#C4A7E7" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#3E8FB0" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#EA9A97" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#EB6F92"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Rosé Pine Dawn Card -->
+                                        <Border x:Name="RosePineDawnCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Rosé Pine Dawn" Background="#FAF4ED" Height="75">
+                                            <Grid>
+                                                <TextBlock Text="Rosé Pine Dawn" FontSize="12.5" FontWeight="Bold" Foreground="#575279" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <Ellipse Width="8" Height="8" Fill="#907AA9" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#286983" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#D7827E" Margin="0,0,4,0"/>
+                                                    <Ellipse Width="8" Height="8" Fill="#B8565A"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </UniformGrid>
+                                </ScrollViewer>
+                            </Grid>
+
+                            <!-- Accounts Tab View -->
+                            <Grid x:Name="AccountsSettingsView" Visibility="Collapsed">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Accounts List -->
+                                <ScrollViewer Grid.Row="0" Margin="0,0,0,16">
+                                    <ItemsControl x:Name="AccountsListControl">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{DynamicResource AccountItemBgBrush}" BorderBrush="{DynamicResource AccountItemBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <StackPanel Grid.Column="0">
+                                                            <TextBlock Text="{Binding Email}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" TextTrimming="CharacterEllipsis"/>
+                                                            <!-- Active Badge -->
+                                                            <Border Visibility="{Binding IsActive, Converter={StaticResource BooleanToVisibilityConverter}}" Background="#162e24" BorderBrush="#205c43" BorderThickness="1" CornerRadius="4" Padding="4,1" HorizontalAlignment="Left" Margin="0,4,0,0">
+                                                                <TextBlock Text="Active" FontSize="8" FontWeight="Bold" Foreground="#34d399"/>
+                                                            </Border>
+                                                        </StackPanel>
+
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                             <!-- Switch Account Button -->
+                                                             <Button Visibility="{Binding IsActive, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Style="{StaticResource DefaultButtonStyle}" Padding="10,4" Click="OnSwitchAccountClicked" Tag="{Binding Email}" ToolTip="Switch to this Account" FontSize="11" Height="28">
+                                                                 <TextBlock Text="Switch" Foreground="{DynamicResource TextSubtitleBrush}" FontWeight="SemiBold"/>
+                                                             </Button>
+                                                            <!-- Remove Account Button -->
+                                                            <Button Background="Transparent" BorderThickness="0" Padding="4" Margin="8,0,0,0" Click="OnRemoveAccountClicked" Tag="{Binding Email}" ToolTip="Log out">
+                                                                <ui:SymbolIcon Symbol="Delete" Foreground="#f87171"/>
+                                                            </Button>
+                                                        </StackPanel>
+                                                    </Grid>
                                                 </Border>
-                                            </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
 
-                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                                 <!-- Switch Account Button -->
-                                                 <Button Visibility="{Binding IsActive, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Style="{StaticResource DefaultButtonStyle}" Padding="10,4" Click="OnSwitchAccountClicked" Tag="{Binding Email}" ToolTip="Switch to this Account" FontSize="11" Height="28">
-                                                     <TextBlock Text="Switch" Foreground="#8e8e93" FontWeight="SemiBold"/>
-                                                 </Button>
-                                                <!-- Remove Account Button -->
-                                                <Button Background="Transparent" BorderThickness="0" Padding="4" Margin="8,0,0,0" Click="OnRemoveAccountClicked" Tag="{Binding Email}" ToolTip="Log out">
-                                                    <ui:SymbolIcon Symbol="Delete" Foreground="#f87171"/>
-                                                </Button>
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                                <!-- Modal Actions -->
+                                <Button Grid.Row="1" Style="{StaticResource HeaderButtonStyle}" Background="#8b5cf6" Foreground="White" HorizontalAlignment="Stretch" Content="Add Google Account" Click="OnOAuthConnectClicked" FontWeight="Bold"/>
+                            </Grid>
 
-                    <!-- Modal Actions -->
-                    <Button Grid.Row="2" Style="{StaticResource HeaderButtonStyle}" Background="#8b5cf6" Foreground="White" HorizontalAlignment="Stretch" Content="Add Google Account" Click="OnOAuthConnectClicked" FontWeight="Bold"/>
+                            <!-- About Tab View -->
+                            <Grid x:Name="AboutSettingsView" Visibility="Collapsed">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="0,0,8,0">
+                                        <!-- Logo & App Title -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                            <Path Data="M12,2L2,12H5V21H19V12H22L12,2ZM7,14L12,9L17,14H7Z" Fill="{DynamicResource ProgressGradientStartBrush}" Width="40" Height="40" Stretch="Uniform" Margin="0,0,12,0"/>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="Antigravity Quota" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
+                                                <TextBlock Text="v1.0.0" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Project description -->
+                                        <TextBlock Text="About this project" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" Margin="0,0,0,8"/>
+                                        <TextBlock Text="A native Windows desktop dashboard for monitoring your AI model quotas, prompt credits, and usage limits in real-time. Built with native C# and WPF to stay self-contained, lightweight, and blazing fast." 
+                                                   TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,0,0,20" LineHeight="18"/>
+
+                                        <!-- Info/Link Cards -->
+                                        <TextBlock Text="Developer &amp; Links" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" Margin="0,0,0,8"/>
+                                        
+                                        <!-- Developer Info -->
+                                        <Border Background="{DynamicResource AccountItemBgBrush}" BorderBrush="{DynamicResource AccountItemBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="Created by" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                                    <TextBlock Text="Eric (ephf)" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" Margin="0,2,0,0"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Style="{StaticResource DefaultButtonStyle}" Content="Visit Website" Click="OnVisitWebsiteClicked" Padding="12,6"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Github Repo -->
+                                        <Border Background="{DynamicResource AccountItemBgBrush}" BorderBrush="{DynamicResource AccountItemBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,16">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="Open Source" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                                    <TextBlock Text="GitHub Repository" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" Margin="0,2,0,0"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Style="{StaticResource DefaultButtonStyle}" Content="View Repository" Click="OnViewRepositoryClicked" Padding="12,6"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Tech Stack summary -->
+                                        <TextBlock Text="Tech Stack" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="C# 12 • .NET 8.0 • WPF • ModernWPF • GDI+ P/Invoke" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+                        </Grid>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>
