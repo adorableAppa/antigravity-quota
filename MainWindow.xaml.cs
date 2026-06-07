@@ -16,6 +16,9 @@ namespace AntigravityQuota
 {
     public partial class MainWindow : Window
     {
+        public const string AppVersion = "1.1.1";
+        private GitHubRelease? _latestRelease;
+
         private readonly OAuthServer _oauthServer;
         private readonly QuotaService _quotaService;
         private readonly DispatcherTimer _tickTimer;
@@ -25,6 +28,7 @@ namespace AntigravityQuota
         public MainWindow()
         {
             InitializeComponent();
+            AppVersionText.Text = $"v{AppVersion}";
 
             var config = ConfigService.LoadGlobalConfig();
             ApplyTheme(config.theme ?? "Mocha");
@@ -41,6 +45,7 @@ namespace AntigravityQuota
             _oauthServer.Start();
             LoadAccountsAndStatus();
             _ = SyncQuotaAsync(false);
+            _ = CheckForUpdatesAsync();
         }
 
         protected override void OnClosing(CancelEventArgs e)
@@ -781,6 +786,43 @@ namespace AntigravityQuota
                     await SyncQuotaAsync(true);
                 }
             }
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                var updateService = new UpdateService();
+                var release = await updateService.CheckForUpdatesAsync("adorableAppa", "antigravity-quota");
+                if (release != null && UpdateService.IsNewerVersion(AppVersion, release.tag_name))
+                {
+                    _latestRelease = release;
+                    UpdateTitleText.Text = $"Update Available! ({release.tag_name})";
+                    UpdateDescriptionText.Text = string.IsNullOrEmpty(release.name) 
+                        ? $"A new version {release.tag_name} is available on GitHub." 
+                        : $"A new version {release.tag_name} is available: {release.name}";
+                    UpdateBanner.Visibility = Visibility.Visible;
+                }
+            }
+            catch {}
+        }
+
+        private void OnDownloadUpdateClicked(object sender, RoutedEventArgs e)
+        {
+            if (_latestRelease != null)
+            {
+                OpenUrl(_latestRelease.html_url);
+            }
+            else
+            {
+                OpenUrl("https://github.com/adorableAppa/antigravity-quota/releases");
+            }
+            UpdateBanner.Visibility = Visibility.Collapsed;
+        }
+
+        private void OnDismissUpdateClicked(object sender, RoutedEventArgs e)
+        {
+            UpdateBanner.Visibility = Visibility.Collapsed;
         }
     }
 

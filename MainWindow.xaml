@@ -81,8 +81,9 @@
         <!-- Main Window Contents -->
         <Grid Margin="24">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/> <!-- Header -->
+                <RowDefinition Height="Auto"/> <!-- Update Banner -->
+                <RowDefinition Height="*"/>    <!-- Content Body -->
             </Grid.RowDefinitions>
 
             <!-- 1. Header / Navigation Row -->
@@ -139,8 +140,48 @@
                 </Grid>
             </Border>
 
-            <!-- 2. Scrollable Dashboard Body -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <!-- 2. Update Notification Banner -->
+            <Border x:Name="UpdateBanner" Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="16" Margin="0,0,0,24" Visibility="Collapsed">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#2c1a04" Offset="0"/>
+                        <GradientStop Color="#1a1230" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#fe8019" Offset="0"/>
+                        <GradientStop Color="#cba6f7" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Info Icon / Glowing Accent -->
+                    <Border Grid.Column="0" Background="#30fe8019" CornerRadius="8" Width="40" Height="40" Margin="0,0,16,0" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Download" Foreground="#fe8019" Width="20" Height="20"/>
+                    </Border>
+
+                    <!-- Text / Info -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="UpdateTitleText" Text="Update Available!" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
+                        <TextBlock x:Name="UpdateDescriptionText" Text="A new version (v1.1.0) is available on GitHub." FontSize="13" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- Actions -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Button x:Name="DownloadUpdateButton" Style="{StaticResource HeaderButtonStyle}" Background="#30fe8019" BorderBrush="#fe8019" Foreground="#fe8019" Content="Download Update (GitHub)" Click="OnDownloadUpdateClicked" Margin="0,0,8,0" Padding="16,6" Height="36"/>
+                        <Button x:Name="DismissUpdateButton" Style="{StaticResource HeaderButtonStyle}" Content="Later" Click="OnDismissUpdateClicked" Padding="16,6" Height="36"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 3. Scrollable Dashboard Body -->
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -615,7 +656,7 @@
                                             <Path Data="M12,2L2,12H5V21H19V12H22L12,2ZM7,14L12,9L17,14H7Z" Fill="{DynamicResource ProgressGradientStartBrush}" Width="40" Height="40" Stretch="Uniform" Margin="0,0,12,0"/>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="Antigravity Quota" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
-                                                <TextBlock Text="v1.0.0" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                                <TextBlock x:Name="AppVersionText" Text="v1.1.1" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
                                             </StackPanel>
                                         </StackPanel>
 
