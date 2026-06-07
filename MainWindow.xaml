@@ -169,7 +169,7 @@
                     <!-- Text / Info -->
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock x:Name="UpdateTitleText" Text="Update Available!" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
-                        <TextBlock x:Name="UpdateDescriptionText" Text="A new version (v1.1.0) is available on GitHub." FontSize="13" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="UpdateDescriptionText" Text="A new version is available on GitHub." FontSize="13" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
 
                     <!-- Actions -->
@@ -374,10 +374,18 @@
                             <TextBlock Grid.Row="0" Text="Settings" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" Margin="8,0,0,24"/>
 
                             <StackPanel Grid.Row="1">
+                                <!-- General Tab Button -->
+                                <Button x:Name="GeneralTabBtn" Style="{StaticResource HeaderButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,8" Margin="0,0,0,8" Click="OnGeneralTabClicked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ui:SymbolIcon Symbol="Setting" Margin="0,0,8,0" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                        <TextBlock Text="General" Foreground="{DynamicResource TextTitleBrush}"/>
+                                    </StackPanel>
+                                </Button>
+
                                 <!-- Appearance Tab Button -->
                                 <Button x:Name="AppearanceTabBtn" Style="{StaticResource HeaderButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,8" Margin="0,0,0,8" Click="OnAppearanceTabClicked">
                                     <StackPanel Orientation="Horizontal">
-                                        <ui:SymbolIcon Symbol="Setting" Margin="0,0,8,0" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                        <ui:SymbolIcon Symbol="FontColor" Margin="0,0,8,0" Foreground="{DynamicResource TextSubtitleBrush}"/>
                                         <TextBlock Text="Appearance" Foreground="{DynamicResource TextTitleBrush}"/>
                                     </StackPanel>
                                 </Button>
@@ -418,15 +426,38 @@
 
                         <!-- Tab Content Grid -->
                         <Grid Grid.Row="1">
+                            <!-- General Tab View -->
+                            <Grid x:Name="GeneralSettingsView" Visibility="Visible">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,0,-8,0" Padding="0,0,8,0">
+                                    <StackPanel>
+                                        <TextBlock Text="System Behavior" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="4,0,0,8"/>
+                                        <StackPanel Margin="4,0,4,16">
+                                            <ui:ToggleSwitch x:Name="MinimizeToTrayToggle" Header="Minimize to System Tray" OffContent="Off" OnContent="On" Toggled="OnTraySettingsChanged" Margin="0,0,0,12"/>
+                                            <ui:ToggleSwitch x:Name="CloseToTrayToggle" Header="Close to System Tray" OffContent="Off" OnContent="On" Toggled="OnTraySettingsChanged" Margin="0,0,0,12"/>
+                                            <ui:ToggleSwitch x:Name="StartWithWindowsToggle" Header="Start with Windows (Autostart)" OffContent="Off" OnContent="On" Toggled="OnStartWithWindowsChanged"/>
+                                        </StackPanel>
+
+                                        <TextBlock Text="Sync Settings" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="4,16,0,8"/>
+                                        <StackPanel Margin="4,0,4,16">
+                                            <TextBlock Text="Quota Sync Interval" FontSize="13" Foreground="{DynamicResource TextTitleBrush}" Margin="0,0,0,6"/>
+                                            <ComboBox x:Name="SyncIntervalComboBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSyncIntervalChanged">
+                                                <ComboBoxItem Content="Manual Refresh Only" Tag="0"/>
+                                                <ComboBoxItem Content="Every 15 minutes" Tag="15"/>
+                                                <ComboBoxItem Content="Every 30 minutes" Tag="30"/>
+                                                <ComboBoxItem Content="Every hour" Tag="60"/>
+                                                <ComboBoxItem Content="Every 2 hours" Tag="120"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+
                             <!-- Appearance Tab View -->
-                            <Grid x:Name="AppearanceSettingsView" Visibility="Visible">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                <TextBlock Grid.Row="0" Text="Theme Flavor" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,0,0,8"/>
-                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,-8,0" Padding="0,0,8,0">
-                                    <UniformGrid Columns="2">
+                            <Grid x:Name="AppearanceSettingsView" Visibility="Collapsed">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,0,-8,0" Padding="0,0,8,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Theme Flavor" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="4,0,0,8"/>
+                                        <UniformGrid Columns="2">
                                         <!-- Catppuchin Mocha Card -->
                                         <Border x:Name="MochaCard" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource CardBorderBrush}" Margin="4" Padding="12,10" Cursor="Hand" MouseLeftButtonDown="OnThemeCardClicked" Tag="Catppuchin Mocha" Background="#1E1E2E" Height="75">
                                             <Grid>
@@ -596,6 +627,7 @@
                                             </Grid>
                                         </Border>
                                     </UniformGrid>
+                                    </StackPanel>
                                 </ScrollViewer>
                             </Grid>
 
@@ -656,7 +688,7 @@
                                             <Path Data="M12,2L2,12H5V21H19V12H22L12,2ZM7,14L12,9L17,14H7Z" Fill="{DynamicResource ProgressGradientStartBrush}" Width="40" Height="40" Stretch="Uniform" Margin="0,0,12,0"/>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="Antigravity Quota" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
-                                                <TextBlock x:Name="AppVersionText" Text="v1.1.1" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                                <TextBlock x:Name="AppVersionText" Text="v1.2.0" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
                                             </StackPanel>
                                         </StackPanel>
 

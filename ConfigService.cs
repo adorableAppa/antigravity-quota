@@ -11,6 +11,10 @@ namespace AntigravityQuota
         public string version { get; set; } = "2.0";
         public string? activeAccount { get; set; }
         public string? theme { get; set; }
+        public bool minimizeToTray { get; set; } = false;
+        public bool closeToTray { get; set; } = false;
+        public bool startWithWindows { get; set; } = false;
+        public int syncIntervalMinutes { get; set; } = 30;
     }
 
     public class AccountTokenInfo

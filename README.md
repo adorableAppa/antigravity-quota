@@ -156,12 +156,12 @@ Antigravity Quota/
 
 ## 🛣 Roadmap
 
-- [ ] **System Tray Mode (Minimize to Tray):** Run the app in the background and restore the dashboard by clicking the tray icon
+- [x] **System Tray Mode (Minimize to Tray):** Run the app in the background and restore the dashboard by clicking the tray icon
 - [ ] **Windows Toast Notifications:** Get notified when a model quota is reset or completely exhausted
-- [ ] **Start with Windows (Autostart):** Option to launch the app automatically at system startup
+- [x] **Start with Windows (Autostart):** Option to launch the app automatically at system startup
 - [ ] **Global Hotkey:** Quickly summon or hide the dashboard from anywhere with a keyboard shortcut (e.g., `Alt+Q`)
 - [x] **Theme Selector:** Manually switch between Dark and Light modes (in addition to following the Windows system theme)
-- [ ] **Configurable Sync Interval:** Option for automatic background quota refreshes (e.g., every 30 minutes)
+- [x] **Configurable Sync Interval:** Option for automatic background quota refreshes (e.g., every 30 minutes)
 
 ---
 

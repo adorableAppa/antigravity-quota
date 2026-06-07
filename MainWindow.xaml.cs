@@ -16,12 +16,17 @@ namespace AntigravityQuota
 {
     public partial class MainWindow : Window
     {
-        public const string AppVersion = "1.1.1";
+        public const string AppVersion = "1.2.0";
         private GitHubRelease? _latestRelease;
+
+        private System.Windows.Forms.NotifyIcon? _notifyIcon;
+        private bool _isExplicitShutdown = false;
+        private bool _hasShownTrayBalloon = false;
 
         private readonly OAuthServer _oauthServer;
         private readonly QuotaService _quotaService;
         private readonly DispatcherTimer _tickTimer;
+        private DispatcherTimer? _syncTimer;
         private readonly List<ModelQuotaViewModel> _modelViewModels = new();
         private QuotaSnapshot? _currentSnapshot;
 
@@ -32,6 +37,11 @@ namespace AntigravityQuota
 
             var config = ConfigService.LoadGlobalConfig();
             ApplyTheme(config.theme ?? "Mocha");
+
+            MinimizeToTrayToggle.IsOn = config.minimizeToTray;
+            CloseToTrayToggle.IsOn = config.closeToTray;
+            StartWithWindowsToggle.IsOn = config.startWithWindows;
+            SelectSyncIntervalItem(config.syncIntervalMinutes);
             
             _quotaService = new QuotaService();
             _oauthServer = new OAuthServer(OnLoginSuccess);
@@ -46,13 +56,50 @@ namespace AntigravityQuota
             LoadAccountsAndStatus();
             _ = SyncQuotaAsync(false);
             _ = CheckForUpdatesAsync();
+
+            InitializeSystemTray();
+            AutostartService.VerifyAndUpdateAutostart();
+            InitializeSyncTimer(config.syncIntervalMinutes);
+        }
+
+        protected override void OnStateChanged(EventArgs e)
+        {
+            base.OnStateChanged(e);
+            if (WindowState == WindowState.Minimized)
+            {
+                var config = ConfigService.LoadGlobalConfig();
+                if (config.minimizeToTray)
+                {
+                    this.Hide();
+                }
+            }
         }
 
         protected override void OnClosing(CancelEventArgs e)
         {
-            _tickTimer.Stop();
-            _oauthServer.Stop();
-            base.OnClosing(e);
+            var config = ConfigService.LoadGlobalConfig();
+            if (!_isExplicitShutdown && config.closeToTray)
+            {
+                e.Cancel = true;
+                this.Hide();
+                
+                if (!_hasShownTrayBalloon)
+                {
+                    _notifyIcon?.ShowBalloonTip(3000, 
+                        "Antigravity Quota", 
+                        "The application is still running in the background.", 
+                        System.Windows.Forms.ToolTipIcon.Info);
+                    _hasShownTrayBalloon = true;
+                }
+            }
+            else
+            {
+                _tickTimer.Stop();
+                _syncTimer?.Stop();
+                _oauthServer.Stop();
+                _notifyIcon?.Dispose();
+                base.OnClosing(e);
+            }
         }
 
         protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
@@ -628,13 +675,18 @@ namespace AntigravityQuota
 
         private void OnSettingsButtonClicked(object sender, RoutedEventArgs e)
         {
-            SwitchToSettingsTab("Appearance");
+            SwitchToSettingsTab("General");
             SettingsModal.Visibility = Visibility.Visible;
         }
 
         private void OnCloseSettingsModalClicked(object sender, RoutedEventArgs e)
         {
             SettingsModal.Visibility = Visibility.Collapsed;
+        }
+
+        private void OnGeneralTabClicked(object sender, RoutedEventArgs e)
+        {
+            SwitchToSettingsTab("General");
         }
 
         private void OnAppearanceTabClicked(object sender, RoutedEventArgs e)
@@ -680,13 +732,28 @@ namespace AntigravityQuota
 
         private void SwitchToSettingsTab(string tabName)
         {
-            if (tabName == "Appearance")
+            if (tabName == "General")
+            {
+                SettingsTabTitleText.Text = "General";
+                GeneralSettingsView.Visibility = Visibility.Visible;
+                AppearanceSettingsView.Visibility = Visibility.Collapsed;
+                AccountsSettingsView.Visibility = Visibility.Collapsed;
+                AboutSettingsView.Visibility = Visibility.Collapsed;
+                
+                GeneralTabBtn.Opacity = 1.0;
+                AppearanceTabBtn.Opacity = 0.6;
+                AccountsTabBtn.Opacity = 0.6;
+                AboutTabBtn.Opacity = 0.6;
+            }
+            else if (tabName == "Appearance")
             {
                 SettingsTabTitleText.Text = "Appearance";
+                GeneralSettingsView.Visibility = Visibility.Collapsed;
                 AppearanceSettingsView.Visibility = Visibility.Visible;
                 AccountsSettingsView.Visibility = Visibility.Collapsed;
                 AboutSettingsView.Visibility = Visibility.Collapsed;
                 
+                GeneralTabBtn.Opacity = 0.6;
                 AppearanceTabBtn.Opacity = 1.0;
                 AccountsTabBtn.Opacity = 0.6;
                 AboutTabBtn.Opacity = 0.6;
@@ -694,10 +761,12 @@ namespace AntigravityQuota
             else if (tabName == "Accounts")
             {
                 SettingsTabTitleText.Text = "Accounts";
+                GeneralSettingsView.Visibility = Visibility.Collapsed;
                 AppearanceSettingsView.Visibility = Visibility.Collapsed;
                 AccountsSettingsView.Visibility = Visibility.Visible;
                 AboutSettingsView.Visibility = Visibility.Collapsed;
                 
+                GeneralTabBtn.Opacity = 0.6;
                 AppearanceTabBtn.Opacity = 0.6;
                 AccountsTabBtn.Opacity = 1.0;
                 AboutTabBtn.Opacity = 0.6;
@@ -707,10 +776,12 @@ namespace AntigravityQuota
             else if (tabName == "About")
             {
                 SettingsTabTitleText.Text = "About";
+                GeneralSettingsView.Visibility = Visibility.Collapsed;
                 AppearanceSettingsView.Visibility = Visibility.Collapsed;
                 AccountsSettingsView.Visibility = Visibility.Collapsed;
                 AboutSettingsView.Visibility = Visibility.Visible;
                 
+                GeneralTabBtn.Opacity = 0.6;
                 AppearanceTabBtn.Opacity = 0.6;
                 AccountsTabBtn.Opacity = 0.6;
                 AboutTabBtn.Opacity = 1.0;
@@ -823,6 +894,122 @@ namespace AntigravityQuota
         private void OnDismissUpdateClicked(object sender, RoutedEventArgs e)
         {
             UpdateBanner.Visibility = Visibility.Collapsed;
+        }
+
+        private void InitializeSystemTray()
+        {
+            try
+            {
+                var contextMenu = new System.Windows.Forms.ContextMenuStrip();
+                
+                var openItem = new System.Windows.Forms.ToolStripMenuItem("Open Dashboard");
+                openItem.Click += (s, e) => RestoreWindow();
+                contextMenu.Items.Add(openItem);
+
+                var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit");
+                exitItem.Click += (s, e) => ShutdownApp();
+                contextMenu.Items.Add(exitItem);
+
+                _notifyIcon = new System.Windows.Forms.NotifyIcon
+                {
+                    Text = "Antigravity Quota",
+                    ContextMenuStrip = contextMenu,
+                    Visible = true
+                };
+
+                // Extract and assign the application icon
+                string processPath = Environment.ProcessPath ?? "";
+                if (!string.IsNullOrEmpty(processPath) && File.Exists(processPath))
+                {
+                    _notifyIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(processPath);
+                }
+
+                _notifyIcon.DoubleClick += (s, e) => RestoreWindow();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to initialize system tray: {ex.Message}");
+            }
+        }
+
+        private void RestoreWindow()
+        {
+            this.Show();
+            if (this.WindowState == WindowState.Minimized)
+            {
+                this.WindowState = WindowState.Normal;
+            }
+            this.Activate();
+        }
+
+        private void ShutdownApp()
+        {
+            _isExplicitShutdown = true;
+            this.Close();
+        }
+
+        private void OnTraySettingsChanged(object sender, RoutedEventArgs e)
+        {
+            if (IsLoaded)
+            {
+                var config = ConfigService.LoadGlobalConfig();
+                config.minimizeToTray = MinimizeToTrayToggle.IsOn;
+                config.closeToTray = CloseToTrayToggle.IsOn;
+                ConfigService.SaveGlobalConfig(config);
+            }
+        }
+
+        private void OnStartWithWindowsChanged(object sender, RoutedEventArgs e)
+        {
+            if (IsLoaded)
+            {
+                var config = ConfigService.LoadGlobalConfig();
+                config.startWithWindows = StartWithWindowsToggle.IsOn;
+                ConfigService.SaveGlobalConfig(config);
+                AutostartService.SetAutostart(config.startWithWindows);
+            }
+        }
+
+        private void OnSyncIntervalChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (IsLoaded && SyncIntervalComboBox.SelectedItem is ComboBoxItem item && int.TryParse(item.Tag?.ToString(), out int minutes))
+            {
+                var config = ConfigService.LoadGlobalConfig();
+                config.syncIntervalMinutes = minutes;
+                ConfigService.SaveGlobalConfig(config);
+                InitializeSyncTimer(minutes);
+            }
+        }
+
+        private void SelectSyncIntervalItem(int minutes)
+        {
+            if (SyncIntervalComboBox == null) return;
+            foreach (ComboBoxItem item in SyncIntervalComboBox.Items)
+            {
+                if (int.TryParse(item.Tag?.ToString(), out int val) && val == minutes)
+                {
+                    SyncIntervalComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        private void InitializeSyncTimer(int minutes)
+        {
+            if (_syncTimer != null)
+            {
+                _syncTimer.Stop();
+                _syncTimer = null;
+            }
+
+            if (minutes <= 0) return;
+
+            _syncTimer = new DispatcherTimer();
+            _syncTimer.Interval = TimeSpan.FromMinutes(minutes);
+            _syncTimer.Tick += async (s, e) => {
+                await SyncQuotaAsync(true);
+            };
+            _syncTimer.Start();
         }
     }
 
