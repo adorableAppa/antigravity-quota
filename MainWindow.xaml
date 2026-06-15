@@ -694,7 +694,8 @@
                                             <Path Data="M12,2L2,12H5V21H19V12H22L12,2ZM7,14L12,9L17,14H7Z" Fill="{DynamicResource ProgressGradientStartBrush}" Width="40" Height="40" Stretch="Uniform" Margin="0,0,12,0"/>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="Antigravity Quota" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
-                                                <TextBlock x:Name="AppVersionText" Text="v1.2.0" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                                <TextBlock x:Name="AppVersionText" Text="v1.3.0" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+
                                             </StackPanel>
                                         </StackPanel>
 

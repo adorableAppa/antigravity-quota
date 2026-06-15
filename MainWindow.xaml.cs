@@ -16,7 +16,8 @@ namespace AntigravityQuota
 {
     public partial class MainWindow : Window
     {
-        public const string AppVersion = "1.2.0";
+        public const string AppVersion = "1.3.0";
+
         private GitHubRelease? _latestRelease;
 
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
