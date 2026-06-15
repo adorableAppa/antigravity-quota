@@ -448,6 +448,12 @@
                                                 <ComboBoxItem Content="Every 2 hours" Tag="120"/>
                                             </ComboBox>
                                         </StackPanel>
+
+                                        <TextBlock Text="Notifications" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="4,16,0,8"/>
+                                        <StackPanel Margin="4,0,4,16">
+                                            <ui:ToggleSwitch x:Name="NotificationsToggle" Header="Quota Change Notifications" OffContent="Off" OnContent="On" Toggled="OnNotificationsToggleChanged"/>
+                                            <TextBlock Text="Get notified when a model quota is exhausted or resets." FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </ScrollViewer>
                             </Grid>

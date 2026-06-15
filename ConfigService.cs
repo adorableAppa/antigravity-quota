@@ -15,6 +15,7 @@ namespace AntigravityQuota
         public bool closeToTray { get; set; } = false;
         public bool startWithWindows { get; set; } = false;
         public int syncIntervalMinutes { get; set; } = 30;
+        public bool notificationsEnabled { get; set; } = true;
     }
 
     public class AccountTokenInfo
