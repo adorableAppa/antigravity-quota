@@ -4,6 +4,7 @@ obj/
 
 # Publish output
 dist*/
+/publish/
 
 # IDE / Editor
 .vs/
