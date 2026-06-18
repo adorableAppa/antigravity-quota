@@ -87,7 +87,7 @@
             </Grid.RowDefinitions>
 
             <!-- 1. Header / Navigation Row -->
-            <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" Padding="16" Margin="0,0,0,24">
+            <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" Padding="16" Margin="8,0,8,24">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -196,7 +196,7 @@
                         </Grid.ColumnDefinitions>
 
                         <!-- Prompt Credits Card -->
-                        <Border Grid.Column="0" Style="{StaticResource GlassCardStyle}" Margin="0,0,16,0">
+                        <Border Grid.Column="0" Style="{StaticResource GlassCardStyle}" Margin="8,0,8,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -226,7 +226,7 @@
                         </Border>
 
                         <!-- Sync Status Details Card -->
-                        <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}">
+                        <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}" Margin="8,0,8,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -260,7 +260,7 @@
 
                     <!-- Models Quota Section -->
                     <StackPanel Grid.Row="1">
-                        <DockPanel Margin="0,0,0,16">
+                        <DockPanel Margin="8,0,8,16">
                             <TextBlock Text="AI Model Limits" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" VerticalAlignment="Bottom"/>
                             <TextBlock x:Name="ModelCountText" Text="0 models tracked" FontSize="13" Foreground="{DynamicResource TextSubtitleBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom" FontWeight="Medium"/>
                         </DockPanel>

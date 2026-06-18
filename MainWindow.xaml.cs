@@ -4,11 +4,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Management;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -19,18 +17,12 @@ namespace AntigravityQuota
         public const string AppVersion = "1.3.0";
 
         private GitHubRelease? _latestRelease;
-
-        private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private bool _isExplicitShutdown = false;
-        private bool _hasShownTrayBalloon = false;
-
-        // Tracks per-model exhaustion state to detect transitions
-        private readonly Dictionary<string, bool> _previousModelStates = new();
 
         private readonly OAuthServer _oauthServer;
         private readonly QuotaService _quotaService;
-        private readonly DispatcherTimer _tickTimer;
-        private DispatcherTimer? _syncTimer;
+        private readonly TrayService _trayService;
+        private readonly SyncTimerService _timerService;
         private readonly List<ModelQuotaViewModel> _modelViewModels = new();
         private QuotaSnapshot? _currentSnapshot;
 
@@ -51,21 +43,26 @@ namespace AntigravityQuota
             _quotaService = new QuotaService();
             _oauthServer = new OAuthServer(OnLoginSuccess);
 
-            // Ticks every second to animate countdown timers
-            _tickTimer = new DispatcherTimer();
-            _tickTimer.Interval = TimeSpan.FromSeconds(1);
-            _tickTimer.Tick += OnTick;
-            _tickTimer.Start();
+            // Initialize services
+            _trayService = new TrayService();
+            _trayService.RestoreRequested += RestoreWindow;
+            _trayService.ShutdownRequested += ShutdownApp;
+            _trayService.Initialize();
+
+            _timerService = new SyncTimerService();
+            _timerService.TickElapsed += OnTick;
+            _timerService.SyncRequested += () => SyncQuotaAsync(true);
+            _timerService.Start(config.syncIntervalMinutes);
 
             _oauthServer.Start();
             LoadAccountsAndStatus();
             _ = SyncQuotaAsync(false);
             _ = CheckForUpdatesAsync();
 
-            InitializeSystemTray();
             AutostartService.VerifyAndUpdateAutostart();
-            InitializeSyncTimer(config.syncIntervalMinutes);
         }
+
+        // ── Window Lifecycle ───────────────────────────────────────────────
 
         protected override void OnStateChanged(EventArgs e)
         {
@@ -87,22 +84,13 @@ namespace AntigravityQuota
             {
                 e.Cancel = true;
                 this.Hide();
-                
-                if (!_hasShownTrayBalloon)
-                {
-                    _notifyIcon?.ShowBalloonTip(3000, 
-                        "Antigravity Quota", 
-                        "The application is still running in the background.", 
-                        System.Windows.Forms.ToolTipIcon.Info);
-                    _hasShownTrayBalloon = true;
-                }
+                _trayService.ShowBackgroundBalloon();
             }
             else
             {
-                _tickTimer.Stop();
-                _syncTimer?.Stop();
+                _timerService.Dispose();
                 _oauthServer.Stop();
-                _notifyIcon?.Dispose();
+                _trayService.Dispose();
                 base.OnClosing(e);
             }
         }
@@ -118,6 +106,24 @@ namespace AntigravityQuota
             }
         }
 
+        private void RestoreWindow()
+        {
+            this.Show();
+            if (this.WindowState == WindowState.Minimized)
+            {
+                this.WindowState = WindowState.Normal;
+            }
+            this.Activate();
+        }
+
+        private void ShutdownApp()
+        {
+            _isExplicitShutdown = true;
+            this.Close();
+        }
+
+        // ── Core Data Flow ─────────────────────────────────────────────────
+
         private void OnLoginSuccess()
         {
             Dispatcher.Invoke(async () =>
@@ -132,11 +138,8 @@ namespace AntigravityQuota
             var config = ConfigService.LoadGlobalConfig();
             string? active = config.activeAccount;
             var accounts = ConfigService.ListAccounts();
-            int accountCount = accounts.Count;
 
             ActiveEmailText.Text = string.IsNullOrEmpty(active) ? "Not Logged In" : active;
-
-
 
             if (AccountsListControl != null)
             {
@@ -166,12 +169,12 @@ namespace AntigravityQuota
             if (isLspRunning)
             {
                 ServiceStatusText.Text = "Active (Connected)";
-                ServiceStatusText.Foreground = new SolidColorBrush(Color.FromRgb(52, 211, 153)); // Emerald-400
+                ServiceStatusText.Foreground = new SolidColorBrush(Color.FromRgb(52, 211, 153));
             }
             else
             {
                 ServiceStatusText.Text = "Disconnected (Local Offline)";
-                ServiceStatusText.Foreground = new SolidColorBrush(Color.FromRgb(248, 113, 113)); // Red-400
+                ServiceStatusText.Foreground = new SolidColorBrush(Color.FromRgb(248, 113, 113));
             }
         }
 
@@ -188,8 +191,8 @@ namespace AntigravityQuota
                 var config = ConfigService.LoadGlobalConfig();
                 _currentSnapshot = await _quotaService.FetchQuotaAsync(method, config.activeAccount);
                 UpdateUI(_currentSnapshot);
-                UpdateTrayContextMenu(_currentSnapshot);
-                CheckAndNotify(_currentSnapshot);
+                _trayService.UpdateMenu(_currentSnapshot);
+                _trayService.CheckAndNotify(_currentSnapshot, config.notificationsEnabled);
             }
             catch (Exception ex)
             {
@@ -201,6 +204,8 @@ namespace AntigravityQuota
                 SyncButton.IsEnabled = true;
             }
         }
+
+        // ── UI Update ──────────────────────────────────────────────────────
 
         private void UpdateUI(QuotaSnapshot snapshot)
         {
@@ -261,7 +266,7 @@ namespace AntigravityQuota
             ModelCountText.Text = $"{_modelViewModels.Count} model(s) tracked";
         }
 
-        private void OnTick(object? sender, EventArgs e)
+        private void OnTick()
         {
             foreach (var vm in _modelViewModels)
             {
@@ -271,15 +276,17 @@ namespace AntigravityQuota
             }
         }
 
+        // ── Theme ──────────────────────────────────────────────────────────
+
         private void ApplyTheme(string? theme)
         {
             var elementTheme = (theme != null && 
                                 (theme.ToLower().Contains("latte") || 
-                                 theme.ToLower().Contains("latt\u00e9") ||
+                                 theme.ToLower().Contains("latté") ||
                                  theme.ToLower().Contains("alucard") ||
                                  theme.ToLower().Contains("gruvbox light") ||
                                  theme.ToLower().Contains("nord light") ||
-                                 theme.ToLower().Contains("ros\u00e9 pine dawn") ||
+                                 theme.ToLower().Contains("rosé pine dawn") ||
                                  theme.ToLower().Contains("rose pine dawn")))
                 ? ModernWpf.ElementTheme.Light
                 : ModernWpf.ElementTheme.Dark;
@@ -296,11 +303,11 @@ namespace AntigravityQuota
                 MacchiatoCard.BorderBrush = IsMatchingTheme(theme, "Catppuchin Macchiato") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
                 MacchiatoCard.BorderThickness = IsMatchingTheme(theme, "Catppuchin Macchiato") ? new Thickness(2) : new Thickness(1);
 
-                FrappeCard.BorderBrush = IsMatchingTheme(theme, "Catppuchin Frapp\u00e9") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
-                FrappeCard.BorderThickness = IsMatchingTheme(theme, "Catppuchin Frapp\u00e9") ? new Thickness(2) : new Thickness(1);
+                FrappeCard.BorderBrush = IsMatchingTheme(theme, "Catppuchin Frappé") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
+                FrappeCard.BorderThickness = IsMatchingTheme(theme, "Catppuchin Frappé") ? new Thickness(2) : new Thickness(1);
 
-                LatteCard.BorderBrush = IsMatchingTheme(theme, "Catppuchin Latt\u00e9") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
-                LatteCard.BorderThickness = IsMatchingTheme(theme, "Catppuchin Latt\u00e9") ? new Thickness(2) : new Thickness(1);
+                LatteCard.BorderBrush = IsMatchingTheme(theme, "Catppuchin Latté") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
+                LatteCard.BorderThickness = IsMatchingTheme(theme, "Catppuchin Latté") ? new Thickness(2) : new Thickness(1);
             }
 
             if (DraculaClassicCard != null && AlucardClassicCard != null)
@@ -335,20 +342,20 @@ namespace AntigravityQuota
 
             if (RosePineCard != null)
             {
-                RosePineCard.BorderBrush = IsMatchingTheme(theme, "Ros\u00e9 Pine") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
-                RosePineCard.BorderThickness = IsMatchingTheme(theme, "Ros\u00e9 Pine") ? new Thickness(2) : new Thickness(1);
+                RosePineCard.BorderBrush = IsMatchingTheme(theme, "Rosé Pine") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
+                RosePineCard.BorderThickness = IsMatchingTheme(theme, "Rosé Pine") ? new Thickness(2) : new Thickness(1);
             }
 
             if (RosePineMoonCard != null)
             {
-                RosePineMoonCard.BorderBrush = IsMatchingTheme(theme, "Ros\u00e9 Pine Moon") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
-                RosePineMoonCard.BorderThickness = IsMatchingTheme(theme, "Ros\u00e9 Pine Moon") ? new Thickness(2) : new Thickness(1);
+                RosePineMoonCard.BorderBrush = IsMatchingTheme(theme, "Rosé Pine Moon") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
+                RosePineMoonCard.BorderThickness = IsMatchingTheme(theme, "Rosé Pine Moon") ? new Thickness(2) : new Thickness(1);
             }
 
             if (RosePineDawnCard != null)
             {
-                RosePineDawnCard.BorderBrush = IsMatchingTheme(theme, "Ros\u00e9 Pine Dawn") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
-                RosePineDawnCard.BorderThickness = IsMatchingTheme(theme, "Ros\u00e9 Pine Dawn") ? new Thickness(2) : new Thickness(1);
+                RosePineDawnCard.BorderBrush = IsMatchingTheme(theme, "Rosé Pine Dawn") ? Resources["ProgressGradientStartBrush"] as Brush : Resources["CardBorderBrush"] as Brush;
+                RosePineDawnCard.BorderThickness = IsMatchingTheme(theme, "Rosé Pine Dawn") ? new Thickness(2) : new Thickness(1);
             }
 
             // Redraw radial progress with new theme track color
@@ -370,8 +377,8 @@ namespace AntigravityQuota
                 .Replace("catppuchin", "")
                 .Replace("catppuccin", "")
                 .Replace(" ", "")
-                .Replace("\u00e9", "e")
-                .Replace("\u00e1", "a");
+                .Replace("é", "e")
+                .Replace("á", "a");
 
             return normalize(configTheme) == normalize(tagTheme);
         }
@@ -379,214 +386,214 @@ namespace AntigravityQuota
         private void SetThemeBrushes(string? theme)
         {
             string normalized = (theme ?? "").ToLower();
-            if (normalized.Contains("latte") || normalized.Contains("latt\u00e9"))
+            if (normalized.Contains("latte") || normalized.Contains("latté"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xDC, 0xE0, 0xE8)); // Crust
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEF, 0xF1, 0xF5)); // Base
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA)); // Surface0
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE6, 0xEA, 0xEF)); // Mantle
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE6, 0xEA, 0xEF)); // Mantle
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA)); // Surface0
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x4F, 0x69)); // Text
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x6C, 0x6F, 0x85)); // Subtext0
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD9, 0xDC, 0xE0, 0xE8)); // Crust w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA)); // Surface0
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA)); // Surface0
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xDC, 0xE0, 0xE8));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEF, 0xF1, 0xF5));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE6, 0xEA, 0xEF));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE6, 0xEA, 0xEF));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x4F, 0x69));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x6C, 0x6F, 0x85));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD9, 0xDC, 0xE0, 0xE8));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCC, 0xD0, 0xDA));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x88, 0x39, 0xEF)); // Mauve
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x04, 0xA5, 0xE5)); // Sky
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xD2, 0x0F, 0x39)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFE, 0x64, 0x0B)); // Peach
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x88, 0x39, 0xEF));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x04, 0xA5, 0xE5));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xD2, 0x0F, 0x39));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFE, 0x64, 0x0B));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0x88, 0x39, 0xEF);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x04, 0xA5, 0xE5);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0x40, 0xA0, 0x2B); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0x40, 0xA0, 0x2B);
             }
-            else if (normalized.Contains("frapp\u00e9") || normalized.Contains("frappe"))
+            else if (normalized.Contains("frappé") || normalized.Contains("frappe"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x23, 0x26, 0x34)); // Crust
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x30, 0x34, 0x46)); // Base
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59)); // Surface0
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x29, 0x2C, 0x3C)); // Mantle
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x29, 0x2C, 0x3C)); // Mantle
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59)); // Surface0
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xC6, 0xD0, 0xF5)); // Text
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xA5, 0xAD, 0xCE)); // Subtext0
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x23, 0x26, 0x34)); // Crust w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59)); // Surface0
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59)); // Surface0
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x23, 0x26, 0x34));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x30, 0x34, 0x46));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x29, 0x2C, 0x3C));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x29, 0x2C, 0x3C));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xC6, 0xD0, 0xF5));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xA5, 0xAD, 0xCE));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x23, 0x26, 0x34));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x41, 0x45, 0x59));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xCA, 0x9E, 0xE6)); // Mauve
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x99, 0xD1, 0xDB)); // Sky
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xE7, 0x82, 0x84)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xEF, 0x9F, 0x76)); // Peach
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xCA, 0x9E, 0xE6));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x99, 0xD1, 0xDB));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xE7, 0x82, 0x84));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xEF, 0x9F, 0x76));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xCA, 0x9E, 0xE6);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x99, 0xD1, 0xDB);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0xA6, 0xD1, 0x89); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0xA6, 0xD1, 0x89);
             }
             else if (normalized.Contains("macchiato"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x18, 0x19, 0x26)); // Crust
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x24, 0x27, 0x3A)); // Base
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F)); // Surface0
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x20, 0x30)); // Mantle
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x20, 0x30)); // Mantle
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F)); // Surface0
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xCA, 0xD3, 0xF5)); // Text
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xA5, 0xAD, 0xCB)); // Subtext0
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x18, 0x19, 0x26)); // Crust w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F)); // Surface0
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F)); // Surface0
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x18, 0x19, 0x26));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x24, 0x27, 0x3A));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x20, 0x30));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x20, 0x30));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xCA, 0xD3, 0xF5));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xA5, 0xAD, 0xCB));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x18, 0x19, 0x26));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x36, 0x3A, 0x4F));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xC6, 0xA0, 0xF6)); // Mauve
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x91, 0xD7, 0xE3)); // Sky
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xED, 0x87, 0x96)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xF5, 0xA9, 0x7F)); // Peach
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xC6, 0xA0, 0xF6));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x91, 0xD7, 0xE3));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xED, 0x87, 0x96));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xF5, 0xA9, 0x7F));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xC6, 0xA0, 0xF6);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x91, 0xD7, 0xE3);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0xA6, 0xDA, 0x95); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0xA6, 0xDA, 0x95);
             }
             else if (normalized.Contains("dracula"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x1F, 0x29)); // Darker background
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x2A, 0x36)); // Base
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A)); // Selection/Surface
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x19, 0x1A, 0x21)); // Mantle
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x19, 0x1A, 0x21)); // Mantle
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A)); // Surface
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xF8, 0xF8, 0xF2)); // Foreground
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x62, 0x72, 0xA4)); // Comment
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x1E, 0x1F, 0x29)); // Crust w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A)); // Selection/Surface
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A)); // Selection/Surface
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x1F, 0x29));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x2A, 0x36));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x19, 0x1A, 0x21));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x19, 0x1A, 0x21));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xF8, 0xF8, 0xF2));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x62, 0x72, 0xA4));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x1E, 0x1F, 0x29));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xBD, 0x93, 0xF9)); // Purple
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x8B, 0xE9, 0xFD)); // Cyan
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x55, 0x55)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xB8, 0x6C)); // Orange
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xBD, 0x93, 0xF9));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x8B, 0xE9, 0xFD));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x55, 0x55));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xB8, 0x6C));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xBD, 0x93, 0xF9);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x8B, 0xE9, 0xFD);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0x50, 0xFA, 0x7B); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0x50, 0xFA, 0x7B);
             }
             else if (normalized.Contains("alucard"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF3, 0xEF, 0xE0)); // Crust (slightly darker cream)
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xFB, 0xEB)); // Base
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE2, 0xD3)); // Surface
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0xE6, 0xD5)); // Mantle
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0xE6, 0xD5)); // Mantle
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCF, 0xCF, 0xDE)); // Selection
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x1F, 0x1F, 0x1F)); // Foreground
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x6C, 0x66, 0x4B)); // Comment
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD0, 0xFF, 0xFB, 0xEB)); // Crust w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0xE6, 0xD5)); // Mantle
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCF, 0xCF, 0xDE)); // Selection
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF3, 0xEF, 0xE0));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xFB, 0xEB));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE2, 0xD3));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0xE6, 0xD5));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0xE6, 0xD5));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCF, 0xCF, 0xDE));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x1F, 0x1F, 0x1F));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x6C, 0x66, 0x4B));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD0, 0xFF, 0xFB, 0xEB));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0xE6, 0xD5));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xCF, 0xCF, 0xDE));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x64, 0x4A, 0xC9)); // Purple
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x03, 0x6A, 0x96)); // Cyan
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xCB, 0x3A, 0x2A)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xA3, 0x4D, 0x14)); // Orange
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x64, 0x4A, 0xC9));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x03, 0x6A, 0x96));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xCB, 0x3A, 0x2A));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xA3, 0x4D, 0x14));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0x64, 0x4A, 0xC9);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x03, 0x6A, 0x96);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0x14, 0x71, 0x0A); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0x14, 0x71, 0x0A);
             }
             else if (normalized.Contains("gruvbox dark"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1D, 0x20, 0x21)); // dark0_hard
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x28, 0x28)); // dark0
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x50, 0x49, 0x45)); // dark3
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x32, 0x30, 0x2F)); // dark0_soft
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x32, 0x30, 0x2F)); // dark0_soft
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x50, 0x49, 0x45)); // dark3
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xFB, 0xF1, 0xC7)); // light0
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x92, 0x83, 0x74)); // gray
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x1D, 0x20, 0x21)); // dark0_hard w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x3C, 0x38, 0x36)); // dark1
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x50, 0x49, 0x45)); // dark3
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1D, 0x20, 0x21));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x28, 0x28));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x50, 0x49, 0x45));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x32, 0x30, 0x2F));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x32, 0x30, 0x2F));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x50, 0x49, 0x45));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xFB, 0xF1, 0xC7));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x92, 0x83, 0x74));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x1D, 0x20, 0x21));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x3C, 0x38, 0x36));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x50, 0x49, 0x45));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xFA, 0xBD, 0x2F)); // Yellow
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x83, 0xA5, 0x98)); // Blue
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xFB, 0x49, 0x34)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFE, 0x80, 0x19)); // Orange
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xFA, 0xBD, 0x2F));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x83, 0xA5, 0x98));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xFB, 0x49, 0x34));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFE, 0x80, 0x19));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xFA, 0xBD, 0x2F);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x83, 0xA5, 0x98);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0xB8, 0xBB, 0x26); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0xB8, 0xBB, 0x26);
             }
             else if (normalized.Contains("gruvbox light"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF9, 0xF5, 0xD7)); // light0_hard
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xFB, 0xF1, 0xC7)); // light0
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0xDB, 0xB2)); // light3
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xE5, 0xBC)); // light0_soft
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xE5, 0xBC)); // light0_soft
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0xDB, 0xB2)); // light3
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x28, 0x28)); // dark0
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x92, 0x83, 0x74)); // gray
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD0, 0xFB, 0xF1, 0xC7)); // light0 w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xE5, 0xBC)); // light0_soft
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0xDB, 0xB2)); // light3
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF9, 0xF5, 0xD7));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xFB, 0xF1, 0xC7));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0xDB, 0xB2));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xE5, 0xBC));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xE5, 0xBC));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0xDB, 0xB2));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x28, 0x28));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x92, 0x83, 0x74));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD0, 0xFB, 0xF1, 0xC7));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xE5, 0xBC));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0xDB, 0xB2));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xB5, 0x76, 0x14)); // Yellow
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x07, 0x66, 0x78)); // Blue
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0x9D, 0x00, 0x06)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xAF, 0x3A, 0x03)); // Orange
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xB5, 0x76, 0x14));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x07, 0x66, 0x78));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0x9D, 0x00, 0x06));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xAF, 0x3A, 0x03));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xB5, 0x76, 0x14);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x07, 0x66, 0x78);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0x79, 0x74, 0x0E); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0x79, 0x74, 0x0E);
             }
             else if (normalized.Contains("nord light"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE9, 0xF0)); // nord5
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEC, 0xEF, 0xF4)); // nord6
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9)); // nord4
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE9, 0xF0)); // nord5
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE9, 0xF0)); // nord5
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9)); // nord4
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40)); // nord0
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A)); // nord3
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD0, 0xE5, 0xE9, 0xF0)); // nord5 w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEC, 0xEF, 0xF4)); // nord6
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9)); // nord4
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE9, 0xF0));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEC, 0xEF, 0xF4));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE9, 0xF0));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE9, 0xF0));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xD0, 0xE5, 0xE9, 0xF0));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xEC, 0xEF, 0xF4));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x5E, 0x81, 0xAC)); // nord10
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x81, 0xA1, 0xC1)); // nord9
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xBF, 0x61, 0x6A)); // nord11
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xD0, 0x87, 0x70)); // nord12
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x5E, 0x81, 0xAC));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x81, 0xA1, 0xC1));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xBF, 0x61, 0x6A));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xD0, 0x87, 0x70));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0x5E, 0x81, 0xAC);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x81, 0xA1, 0xC1);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0xA3, 0xBE, 0x8C); // nord14
+                Resources["ProgressGreenColor"] = Color.FromRgb(0xA3, 0xBE, 0x8C);
             }
             else if (normalized.Contains("nord"))
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40)); // nord0
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x3B, 0x42, 0x52)); // nord1
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A)); // nord3
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40)); // nord0
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40)); // nord0
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A)); // nord3
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xEC, 0xEF, 0xF4)); // nord6
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9)); // nord4
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x2E, 0x34, 0x40)); // nord0 w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x43, 0x4C, 0x5E)); // nord2
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A)); // nord3
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x3B, 0x42, 0x52));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x2E, 0x34, 0x40));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xEC, 0xEF, 0xF4));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE9));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x2E, 0x34, 0x40));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x43, 0x4C, 0x5E));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x4C, 0x56, 0x6A));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x88, 0xC0, 0xD0)); // nord8
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x81, 0xA1, 0xC1)); // nord9
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xBF, 0x61, 0x6A)); // nord11
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xD0, 0x87, 0x70)); // nord12
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x88, 0xC0, 0xD0));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x81, 0xA1, 0xC1));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xBF, 0x61, 0x6A));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xD0, 0x87, 0x70));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0x88, 0xC0, 0xD0);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x81, 0xA1, 0xC1);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0xA3, 0xBE, 0x8C); // nord14
+                Resources["ProgressGreenColor"] = Color.FromRgb(0xA3, 0xBE, 0x8C);
             }
-            else if (normalized.Contains("ros\u00e9 pine moon") || normalized.Contains("rose pine moon"))
+            else if (normalized.Contains("rosé pine moon") || normalized.Contains("rose pine moon"))
             {
                 Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1B, 0x19, 0x29));
                 Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x23, 0x21, 0x36));
@@ -600,16 +607,16 @@ namespace AntigravityQuota
                 Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x39, 0x35, 0x52));
                 Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x39, 0x35, 0x52));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xC4, 0xA7, 0xE7)); // Iris
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x3E, 0x8F, 0xB0)); // Pine
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0x6F, 0x92)); // Love
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xF6, 0xC1, 0x77)); // Gold
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xC4, 0xA7, 0xE7));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x3E, 0x8F, 0xB0));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0x6F, 0x92));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xF6, 0xC1, 0x77));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xC4, 0xA7, 0xE7);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x3E, 0x8F, 0xB0);
                 Resources["ProgressGreenColor"] = Color.FromRgb(0x3E, 0x8F, 0xB0);
             }
-            else if (normalized.Contains("ros\u00e9 pine dawn") || normalized.Contains("rose pine dawn"))
+            else if (normalized.Contains("rosé pine dawn") || normalized.Contains("rose pine dawn"))
             {
                 Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xE9, 0xE1));
                 Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0xFA, 0xF4, 0xED));
@@ -623,16 +630,16 @@ namespace AntigravityQuota
                 Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xFA, 0xF3));
                 Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xE4, 0xDB, 0xD2));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x90, 0x7A, 0xA9)); // Iris
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x69, 0x83)); // Pine
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xB8, 0x56, 0x5A)); // Love
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0x9D, 0x34)); // Gold
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0x90, 0x7A, 0xA9));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x28, 0x69, 0x83));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xB8, 0x56, 0x5A));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0x9D, 0x34));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0x90, 0x7A, 0xA9);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x28, 0x69, 0x83);
                 Resources["ProgressGreenColor"] = Color.FromRgb(0x28, 0x69, 0x83);
             }
-            else if (normalized.Contains("ros\u00e9 pine") || normalized.Contains("rose pine"))
+            else if (normalized.Contains("rosé pine") || normalized.Contains("rose pine"))
             {
                 Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x12, 0x10, 0x1A));
                 Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x19, 0x17, 0x24));
@@ -646,10 +653,10 @@ namespace AntigravityQuota
                 Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x26, 0x23, 0x3A));
                 Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x26, 0x23, 0x3A));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xC4, 0xA7, 0xE7)); // Iris
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x74, 0x8F)); // Pine
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0x6F, 0x92)); // Love
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xF6, 0xC1, 0x77)); // Gold
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xC4, 0xA7, 0xE7));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x74, 0x8F));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xEB, 0x6F, 0x92));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xF6, 0xC1, 0x77));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xC4, 0xA7, 0xE7);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x31, 0x74, 0x8F);
@@ -657,28 +664,30 @@ namespace AntigravityQuota
             }
             else // Default to Mocha
             {
-                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)); // Crust
-                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E)); // Base
-                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)); // Surface0
-                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)); // Mantle
-                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)); // Mantle
-                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)); // Surface0
-                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)); // Text
-                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xA6, 0xAD, 0xC8)); // Subtext0
-                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x11, 0x11, 0x1B)); // Crust w/ opacity
-                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)); // Surface0
-                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)); // Surface0
+                Resources["WindowBgBrush"] = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B));
+                Resources["CardBgBrush"] = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E));
+                Resources["CardBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44));
+                Resources["HeaderButtonBgBrush"] = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25));
+                Resources["AccountCapsuleBgBrush"] = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25));
+                Resources["AccountCapsuleBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44));
+                Resources["TextTitleBrush"] = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4));
+                Resources["TextSubtitleBrush"] = new SolidColorBrush(Color.FromRgb(0xA6, 0xAD, 0xC8));
+                Resources["ModalBgBrush"] = new SolidColorBrush(Color.FromArgb(0xC0, 0x11, 0x11, 0x1B));
+                Resources["AccountItemBgBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44));
+                Resources["AccountItemBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44));
 
-                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xCB, 0xA6, 0xF7)); // Mauve
-                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x89, 0xDC, 0xEB)); // Sky
-                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)); // Red
-                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)); // Peach
+                Resources["ProgressGradientStartBrush"] = new SolidColorBrush(Color.FromRgb(0xCB, 0xA6, 0xF7));
+                Resources["ProgressGradientEndBrush"] = new SolidColorBrush(Color.FromRgb(0x89, 0xDC, 0xEB));
+                Resources["ProgressExhaustedBrush"] = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8));
+                Resources["ProgressWarningBrush"] = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87));
 
                 Resources["ProgressGradientStartColor"] = Color.FromRgb(0xCB, 0xA6, 0xF7);
                 Resources["ProgressGradientEndColor"] = Color.FromRgb(0x89, 0xDC, 0xEB);
-                Resources["ProgressGreenColor"] = Color.FromRgb(0xA6, 0xE3, 0xA1); // Green
+                Resources["ProgressGreenColor"] = Color.FromRgb(0xA6, 0xE3, 0xA1);
             }
         }
+
+        // ── Settings Event Handlers ────────────────────────────────────────
 
         private void OnSettingsButtonClicked(object sender, RoutedEventArgs e)
         {
@@ -903,186 +912,6 @@ namespace AntigravityQuota
             UpdateBanner.Visibility = Visibility.Collapsed;
         }
 
-        private void InitializeSystemTray()
-        {
-            try
-            {
-                var contextMenu = new System.Windows.Forms.ContextMenuStrip();
-                BuildBaseTrayMenu(contextMenu);
-
-                // Apply Windows 11 rounded corners + themed colors when the popup opens
-                contextMenu.Opening += (s, e) =>
-                {
-                    if (s is System.Windows.Forms.ContextMenuStrip strip)
-                    {
-                        strip.Renderer = CreateTrayRenderer();
-                        GdiInterop.ApplyRoundedCorners(strip.Handle);
-                    }
-                };
-
-                _notifyIcon = new System.Windows.Forms.NotifyIcon
-                {
-                    Text = "Antigravity Quota",
-                    ContextMenuStrip = contextMenu,
-                    Visible = true
-                };
-
-                // Extract and assign the application icon
-                string processPath = Environment.ProcessPath ?? "";
-                if (!string.IsNullOrEmpty(processPath) && File.Exists(processPath))
-                {
-                    _notifyIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(processPath);
-                }
-
-                _notifyIcon.DoubleClick += (s, e) => RestoreWindow();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to initialize system tray: {ex.Message}");
-            }
-        }
-
-        private void BuildBaseTrayMenu(System.Windows.Forms.ContextMenuStrip contextMenu)
-        {
-            contextMenu.Items.Clear();
-
-            // Header label (non-clickable)
-            var headerItem = new System.Windows.Forms.ToolStripMenuItem("Antigravity Quota")
-            {
-                Enabled = false,
-                Font = new System.Drawing.Font("Segoe UI", 9f, System.Drawing.FontStyle.Bold)
-            };
-            contextMenu.Items.Add(headerItem);
-            contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-
-            // Placeholder until first sync
-            var loadingItem = new System.Windows.Forms.ToolStripMenuItem("Loading quota...")
-            {
-                Enabled = false
-            };
-            contextMenu.Items.Add(loadingItem);
-            contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-
-            var openItem = new System.Windows.Forms.ToolStripMenuItem("Open Dashboard");
-            openItem.Click += (s, e) => RestoreWindow();
-            contextMenu.Items.Add(openItem);
-
-            var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit");
-            exitItem.Click += (s, e) => ShutdownApp();
-            contextMenu.Items.Add(exitItem);
-        }
-
-        private void UpdateTrayContextMenu(QuotaSnapshot snapshot)
-        {
-            if (_notifyIcon?.ContextMenuStrip == null) return;
-
-            // Must run on UI thread since ContextMenuStrip is a WinForms control
-            Dispatcher.Invoke(() =>
-            {
-                try
-                {
-                    var menu = _notifyIcon.ContextMenuStrip;
-                    menu.Items.Clear();
-
-                    // ── Header ──
-                    menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("Antigravity Quota")
-                    {
-                        Enabled = false,
-                        Font = new System.Drawing.Font("Segoe UI", 9f, System.Drawing.FontStyle.Bold)
-                    });
-                    menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-
-                    // ── Prompt Credits ──
-                    if (snapshot.PromptCredits != null)
-                    {
-                        int pct = (int)Math.Round(snapshot.PromptCredits.RemainingPercentage * 100);
-                        string creditsLabel = $"Credits:  {snapshot.PromptCredits.Available:N0} / {snapshot.PromptCredits.Monthly:N0}  ({pct}% left)";
-                        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem(creditsLabel) { Enabled = false });
-                        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-                    }
-
-                    // ── Per-model quota ──
-                    bool hasModels = false;
-                    foreach (var m in snapshot.Models)
-                    {
-                        if (m.IsAutocompleteOnly) continue; // skip autocomplete-only in tray
-                        hasModels = true;
-
-                        string status;
-                        if (m.IsExhausted)
-                        {
-                            status = "EXHAUSTED";
-                        }
-                        else if (m.RemainingPercentage.HasValue)
-                        {
-                            int pct = (int)Math.Round(m.RemainingPercentage.Value * 100);
-                            status = $"{pct}% remaining";
-                        }
-                        else
-                        {
-                            status = "Unlimited";
-                        }
-
-                        string icon = m.IsExhausted ? "✗" : "✓";
-                        string label = $"{icon}  {m.Label}:  {status}";
-
-                        var item = new System.Windows.Forms.ToolStripMenuItem(label) { Enabled = false };
-                        if (m.IsExhausted)
-                        {
-                            item.ForeColor = System.Drawing.Color.FromArgb(220, 80, 80);
-                        }
-                        menu.Items.Add(item);
-                    }
-
-                    if (!hasModels)
-                    {
-                        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("No models tracked") { Enabled = false });
-                    }
-
-                    menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-
-                    // ── Actions ──
-                    var openItem = new System.Windows.Forms.ToolStripMenuItem("Open Dashboard");
-                    openItem.Click += (s, e) => RestoreWindow();
-                    menu.Items.Add(openItem);
-
-                    var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit");
-                    exitItem.Click += (s, e) => ShutdownApp();
-                    menu.Items.Add(exitItem);
-
-                    // Update tooltip with a compact summary
-                    string tooltipSummary = "Antigravity Quota";
-                    if (snapshot.PromptCredits != null)
-                    {
-                        tooltipSummary += $" — {snapshot.PromptCredits.Available:N0} credits left";
-                    }
-                    _notifyIcon.Text = tooltipSummary.Length > 63
-                        ? tooltipSummary[..63]
-                        : tooltipSummary;
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Failed to update tray menu: {ex.Message}");
-                }
-            });
-        }
-
-        private void RestoreWindow()
-        {
-            this.Show();
-            if (this.WindowState == WindowState.Minimized)
-            {
-                this.WindowState = WindowState.Normal;
-            }
-            this.Activate();
-        }
-
-        private void ShutdownApp()
-        {
-            _isExplicitShutdown = true;
-            this.Close();
-        }
-
         private void OnTraySettingsChanged(object sender, RoutedEventArgs e)
         {
             if (IsLoaded)
@@ -1104,42 +933,6 @@ namespace AntigravityQuota
             }
         }
 
-        private void CheckAndNotify(QuotaSnapshot snapshot)
-        {
-            var config = ConfigService.LoadGlobalConfig();
-            if (!config.notificationsEnabled) return;
-            if (_notifyIcon == null) return;
-
-            foreach (var m in snapshot.Models)
-            {
-                if (m.IsAutocompleteOnly) continue;
-
-                bool wasExhausted = _previousModelStates.TryGetValue(m.ModelId, out bool prev) && prev;
-                bool isExhausted  = m.IsExhausted;
-
-                if (!wasExhausted && isExhausted)
-                {
-                    // Transition: available → exhausted
-                    _notifyIcon.ShowBalloonTip(
-                        4000,
-                        "Quota Exhausted ✗",
-                        $"{m.Label} has reached its quota limit.",
-                        System.Windows.Forms.ToolTipIcon.Warning);
-                }
-                else if (wasExhausted && !isExhausted)
-                {
-                    // Transition: exhausted → available (reset)
-                    _notifyIcon.ShowBalloonTip(
-                        4000,
-                        "Quota Reset ✓",
-                        $"{m.Label} quota has been reset and is available again.",
-                        System.Windows.Forms.ToolTipIcon.Info);
-                }
-
-                _previousModelStates[m.ModelId] = isExhausted;
-            }
-        }
-
         private void OnStartWithWindowsChanged(object sender, RoutedEventArgs e)
         {
             if (IsLoaded)
@@ -1158,7 +951,7 @@ namespace AntigravityQuota
                 var config = ConfigService.LoadGlobalConfig();
                 config.syncIntervalMinutes = minutes;
                 ConfigService.SaveGlobalConfig(config);
-                InitializeSyncTimer(minutes);
+                _timerService.UpdateInterval(minutes);
             }
         }
 
@@ -1173,347 +966,6 @@ namespace AntigravityQuota
                     break;
                 }
             }
-        }
-
-        private void InitializeSyncTimer(int minutes)
-        {
-            if (_syncTimer != null)
-            {
-                _syncTimer.Stop();
-                _syncTimer = null;
-            }
-
-            if (minutes <= 0) return;
-
-            _syncTimer = new DispatcherTimer();
-            _syncTimer.Interval = TimeSpan.FromMinutes(minutes);
-            _syncTimer.Tick += async (s, e) => {
-                await SyncQuotaAsync(true);
-            };
-            _syncTimer.Start();
-        }
-
-        // ── Tray Theming ───────────────────────────────────────────────
-
-        private ThemedTrayRenderer CreateTrayRenderer()
-        {
-            var config = ConfigService.LoadGlobalConfig();
-            string t = (config.theme ?? "").ToLower();
-
-            System.Drawing.Color bg, iconMargin, border, accent, text, dimText;
-
-            if (t.Contains("latte") || t.Contains("latt\u00e9"))
-            {
-                bg         = C(0xEF, 0xF1, 0xF5);
-                iconMargin = C(0xDC, 0xE0, 0xE8);
-                border     = C(0xCC, 0xD0, 0xDA);
-                accent     = C(0x88, 0x39, 0xEF);
-                text       = C(0x4C, 0x4F, 0x69);
-                dimText    = C(0x6C, 0x6F, 0x85);
-            }
-            else if (t.Contains("frapp\u00e9") || t.Contains("frappe"))
-            {
-                bg         = C(0x30, 0x34, 0x46);
-                iconMargin = C(0x23, 0x26, 0x34);
-                border     = C(0x41, 0x45, 0x59);
-                accent     = C(0xCA, 0x9E, 0xE6);
-                text       = C(0xC6, 0xD0, 0xF5);
-                dimText    = C(0xA5, 0xAD, 0xCE);
-            }
-            else if (t.Contains("macchiato"))
-            {
-                bg         = C(0x24, 0x27, 0x3A);
-                iconMargin = C(0x18, 0x19, 0x26);
-                border     = C(0x36, 0x3A, 0x4F);
-                accent     = C(0xC6, 0xA0, 0xF6);
-                text       = C(0xCA, 0xD3, 0xF5);
-                dimText    = C(0xA5, 0xAD, 0xCB);
-            }
-            else if (t.Contains("dracula"))
-            {
-                bg         = C(0x28, 0x2A, 0x36);
-                iconMargin = C(0x1E, 0x1F, 0x29);
-                border     = C(0x44, 0x47, 0x5A);
-                accent     = C(0xBD, 0x93, 0xF9);
-                text       = C(0xF8, 0xF8, 0xF2);
-                dimText    = C(0x62, 0x72, 0xA4);
-            }
-            else if (t.Contains("alucard"))
-            {
-                bg         = C(0xFF, 0xFB, 0xEB);
-                iconMargin = C(0xF3, 0xEF, 0xE0);
-                border     = C(0xE5, 0xE2, 0xD3);
-                accent     = C(0x64, 0x4A, 0xC9);
-                text       = C(0x1F, 0x1F, 0x1F);
-                dimText    = C(0x6C, 0x66, 0x4B);
-            }
-            else if (t.Contains("gruvbox dark"))
-            {
-                bg         = C(0x28, 0x28, 0x28);
-                iconMargin = C(0x1D, 0x20, 0x21);
-                border     = C(0x50, 0x49, 0x45);
-                accent     = C(0xFA, 0xBD, 0x2F);
-                text       = C(0xFB, 0xF1, 0xC7);
-                dimText    = C(0x92, 0x83, 0x74);
-            }
-            else if (t.Contains("gruvbox light"))
-            {
-                bg         = C(0xFB, 0xF1, 0xC7);
-                iconMargin = C(0xF9, 0xF5, 0xD7);
-                border     = C(0xEB, 0xDB, 0xB2);
-                accent     = C(0xB5, 0x76, 0x14);
-                text       = C(0x28, 0x28, 0x28);
-                dimText    = C(0x92, 0x83, 0x74);
-            }
-            else if (t.Contains("nord light"))
-            {
-                bg         = C(0xEC, 0xEF, 0xF4);
-                iconMargin = C(0xE5, 0xE9, 0xF0);
-                border     = C(0xD8, 0xDE, 0xE9);
-                accent     = C(0x5E, 0x81, 0xAC);
-                text       = C(0x2E, 0x34, 0x40);
-                dimText    = C(0x4C, 0x56, 0x6A);
-            }
-            else if (t.Contains("nord"))
-            {
-                bg         = C(0x3B, 0x42, 0x52);
-                iconMargin = C(0x2E, 0x34, 0x40);
-                border     = C(0x4C, 0x56, 0x6A);
-                accent     = C(0x88, 0xC0, 0xD0);
-                text       = C(0xEC, 0xEF, 0xF4);
-                dimText    = C(0xD8, 0xDE, 0xE9);
-            }
-            else if (t.Contains("ros\u00e9 pine moon") || t.Contains("rose pine moon"))
-            {
-                bg         = C(0x23, 0x21, 0x36);
-                iconMargin = C(0x1B, 0x19, 0x29);
-                border     = C(0x39, 0x35, 0x52);
-                accent     = C(0xC4, 0xA7, 0xE7);
-                text       = C(0xE0, 0xDE, 0xF4);
-                dimText    = C(0x90, 0x8C, 0xAA);
-            }
-            else if (t.Contains("ros\u00e9 pine dawn") || t.Contains("rose pine dawn"))
-            {
-                bg         = C(0xFA, 0xF4, 0xED);
-                iconMargin = C(0xF2, 0xE9, 0xE1);
-                border     = C(0xE4, 0xDB, 0xD2);
-                accent     = C(0x90, 0x7A, 0xA9);
-                text       = C(0x57, 0x52, 0x79);
-                dimText    = C(0x98, 0x93, 0xA5);
-            }
-            else if (t.Contains("ros\u00e9 pine") || t.Contains("rose pine"))
-            {
-                bg         = C(0x19, 0x17, 0x24);
-                iconMargin = C(0x12, 0x10, 0x1A);
-                border     = C(0x26, 0x23, 0x3A);
-                accent     = C(0xC4, 0xA7, 0xE7);
-                text       = C(0xE0, 0xDE, 0xF4);
-                dimText    = C(0x90, 0x8C, 0xAA);
-            }
-            else // Default: Mocha
-            {
-                bg         = C(0x1E, 0x1E, 0x2E);
-                iconMargin = C(0x11, 0x11, 0x1B);
-                border     = C(0x31, 0x32, 0x44);
-                accent     = C(0xCB, 0xA6, 0xF7);
-                text       = C(0xCD, 0xD6, 0xF4);
-                dimText    = C(0xA6, 0xAD, 0xC8);
-            }
-
-            // Hover = border blended slightly toward accent for a subtle highlight
-            var hover = Blend(border, accent, 0.15f);
-
-            var table = new ThemeColorTable(bg, iconMargin, border, hover, accent);
-            return new ThemedTrayRenderer(table, text, dimText);
-        }
-
-        // Shorthand helper
-        private static System.Drawing.Color C(int r, int g, int b)
-            => System.Drawing.Color.FromArgb(r, g, b);
-
-        private static System.Drawing.Color Blend(System.Drawing.Color a, System.Drawing.Color b, float t)
-            => System.Drawing.Color.FromArgb(
-                (int)(a.R + (b.R - a.R) * t),
-                (int)(a.G + (b.G - a.G) * t),
-                (int)(a.B + (b.B - a.B) * t));
-
-        // ── Nested WinForms renderer classes ──────────────────────────────
-
-        private sealed class ThemeColorTable : System.Windows.Forms.ProfessionalColorTable
-        {
-            private readonly System.Drawing.Color _bg;
-            private readonly System.Drawing.Color _iconMargin;
-            private readonly System.Drawing.Color _border;
-            private readonly System.Drawing.Color _hover;
-            private readonly System.Drawing.Color _accent;
-
-            public ThemeColorTable(
-                System.Drawing.Color bg,
-                System.Drawing.Color iconMargin,
-                System.Drawing.Color border,
-                System.Drawing.Color hover,
-                System.Drawing.Color accent)
-            {
-                UseSystemColors = false;
-                _bg = bg; _iconMargin = iconMargin; _border = border;
-                _hover = hover; _accent = accent;
-            }
-
-            // Menu background
-            public override System.Drawing.Color ToolStripDropDownBackground => _bg;
-            public override System.Drawing.Color MenuStripGradientBegin      => _bg;
-            public override System.Drawing.Color MenuStripGradientEnd        => _bg;
-
-            // Outer border of the popup
-            public override System.Drawing.Color MenuBorder => _border;
-
-            // Hover state
-            public override System.Drawing.Color MenuItemSelected                => _hover;
-            public override System.Drawing.Color MenuItemSelectedGradientBegin   => _hover;
-            public override System.Drawing.Color MenuItemSelectedGradientEnd     => _hover;
-            public override System.Drawing.Color MenuItemBorder                  => _accent;
-            public override System.Drawing.Color MenuItemPressedGradientBegin    => _hover;
-            public override System.Drawing.Color MenuItemPressedGradientMiddle   => _hover;
-            public override System.Drawing.Color MenuItemPressedGradientEnd      => _hover;
-
-            // Left icon strip
-            public override System.Drawing.Color ImageMarginGradientBegin => _iconMargin;
-            public override System.Drawing.Color ImageMarginGradientMiddle => _iconMargin;
-            public override System.Drawing.Color ImageMarginGradientEnd   => _iconMargin;
-
-            // Separator
-            public override System.Drawing.Color SeparatorDark  => _border;
-            public override System.Drawing.Color SeparatorLight => System.Drawing.Color.Transparent;
-        }
-
-        private sealed class ThemedTrayRenderer : System.Windows.Forms.ToolStripProfessionalRenderer
-        {
-            private readonly System.Drawing.Color _text;
-            private readonly System.Drawing.Color _dimText;
-
-            public ThemedTrayRenderer(ThemeColorTable table, System.Drawing.Color text, System.Drawing.Color dimText)
-                : base(table)
-            {
-                RoundedEdges = false; // we handle rounding ourselves via DWM
-                _text = text;
-                _dimText = dimText;
-            }
-
-            protected override void OnRenderItemText(System.Windows.Forms.ToolStripItemTextRenderEventArgs e)
-            {
-                e.TextColor = e.Item.Enabled ? _text : _dimText;
-                base.OnRenderItemText(e);
-            }
-        }
-    }
-
-    public class ModelQuotaViewModel : INotifyPropertyChanged
-    {
-        public ModelQuota Model { get; }
-        private readonly bool _isLocal;
-
-        public string Label => Model.Label;
-        public string ModelId => Model.ModelId;
-        public bool IsAutocompleteOnly => Model.IsAutocompleteOnly;
-
-        public string DisplayPercentage => Model.IsExhausted 
-            ? "0% Remaining" 
-            : $"{(int)Math.Round((Model.RemainingPercentage ?? 1.0) * 100)}% Available";
-
-        public double ProgressBarValue => Model.IsExhausted ? 0.0 : (Model.RemainingPercentage ?? 1.0) * 100;
-
-        public Brush ProgressBrush
-        {
-            get
-            {
-                if (Model.IsExhausted) return new SolidColorBrush(Color.FromRgb(239, 68, 68));
-                double pct = (Model.RemainingPercentage ?? 1.0) * 100;
-                if (pct <= 20) return new SolidColorBrush(Color.FromRgb(239, 68, 68));
-                if (pct <= 50) return new SolidColorBrush(Color.FromRgb(251, 191, 36));
-
-                var lgb = new LinearGradientBrush
-                {
-                    StartPoint = new Point(0, 0),
-                    EndPoint = new Point(1, 0)
-                };
-                lgb.GradientStops.Add(new GradientStop(Color.FromRgb(139, 92, 246), 0));
-                lgb.GradientStops.Add(new GradientStop(Color.FromRgb(6, 182, 212), 1));
-                return lgb;
-            }
-        }
-
-        public string DisplayTimeLeft
-        {
-            get
-            {
-                if (Model.ResetTime == null) return "No Limit Set";
-                if (Model.TimeUntilResetMs <= 0) return "Ready / Reset";
-
-                TimeSpan t = TimeSpan.FromMilliseconds(Model.TimeUntilResetMs);
-                if (t.Days >= 1)
-                {
-                    return $"{t.Days}d {t.Hours}h {t.Minutes}m {t.Seconds}s";
-                }
-                if (t.Hours >= 1)
-                {
-                    return $"{t.Hours}h {t.Minutes}m {t.Seconds}s";
-                }
-                return $"{t.Minutes}m {t.Seconds}s";
-            }
-        }
-
-        public Brush TimerColorBrush
-        {
-            get
-            {
-                if (Model.ResetTime != null && Model.TimeUntilResetMs > 0 && Model.TimeUntilResetMs < 15 * 60 * 1000)
-                {
-                    return new SolidColorBrush(Color.FromRgb(251, 113, 133));
-                }
-                return new SolidColorBrush(Color.FromRgb(142, 142, 147));
-            }
-        }
-
-        // Monitor vs Cloud icon geometry path
-        public string MethodIconPath => _isLocal
-            ? "M2,3 H22 V17 H2 Z M8,21 H16 M12,17 V21"
-            : "M12,2 A10,10 0 1,0 22,12 H12 Z";
-
-        public ModelQuotaViewModel(ModelQuota model, bool isLocal)
-        {
-            Model = model;
-            _isLocal = isLocal;
-        }
-
-        public void Tick()
-        {
-            if (Model.TimeUntilResetMs > 0)
-            {
-                Model.TimeUntilResetMs = Math.Max(0, Model.TimeUntilResetMs - 1000);
-            }
-        }
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-        public void NotifyPropertyChanged([CallerMemberName] string propertyName = "")
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-    }
-
-    public class InverseBooleanToVisibilityConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-        {
-            if (value is bool b)
-            {
-                return b ? Visibility.Collapsed : Visibility.Visible;
-            }
-            return Visibility.Visible;
-        }
-
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-        {
-            throw new NotImplementedException();
         }
     }
 }

@@ -14,15 +14,26 @@ namespace AntigravityQuota
 {
     public class QuotaService
     {
-        private readonly HttpClient _httpClient;
+        // Strict SSL validation for all Google API calls
+        private readonly HttpClient _googleHttpClient;
+        // Allows self-signed certificates on loopback only (local Language Server)
+        private readonly HttpClient _localHttpClient;
 
         public QuotaService()
         {
-            var handler = new HttpClientHandler
+            _googleHttpClient = new HttpClient();
+
+            var localHandler = new HttpClientHandler
             {
-                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+                {
+                    if (errors == System.Net.Security.SslPolicyErrors.None) return true;
+                    // Allow self-signed only for loopback addresses
+                    var host = message.RequestUri?.Host;
+                    return host == "127.0.0.1" || host == "localhost" || host == "::1";
+                }
             };
-            _httpClient = new HttpClient(handler);
+            _localHttpClient = new HttpClient(localHandler);
         }
 
         private async Task<string?> GetValidAccessTokenAsync(string email)
@@ -48,7 +59,7 @@ namespace AntigravityQuota
                     { "grant_type", "refresh_token" }
                 };
 
-                var res = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(refreshParams));
+                var res = await _googleHttpClient.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(refreshParams));
                 if (!res.IsSuccessStatusCode) return null;
 
                 string json = await res.Content.ReadAsStringAsync();
@@ -108,7 +119,7 @@ namespace AntigravityQuota
             }
             request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await _localHttpClient.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
                 throw new Exception($"Connect RPC status failed: {response.StatusCode}");
@@ -132,7 +143,7 @@ namespace AntigravityQuota
             reqAssist.Headers.UserAgent.ParseAdd("antigravity");
             reqAssist.Content = new StringContent("{\"metadata\":{\"ideType\":\"ANTIGRAVITY\",\"platform\":\"PLATFORM_UNSPECIFIED\",\"pluginType\":\"GEMINI\"}}", Encoding.UTF8, "application/json");
 
-            var resAssist = await _httpClient.SendAsync(reqAssist);
+            var resAssist = await _googleHttpClient.SendAsync(reqAssist);
             if (!resAssist.IsSuccessStatusCode)
             {
                 throw new Exception($"LoadCodeAssist failed: {resAssist.StatusCode}");
@@ -173,7 +184,7 @@ namespace AntigravityQuota
             reqModels.Headers.UserAgent.ParseAdd("antigravity");
             reqModels.Content = new StringContent(string.IsNullOrEmpty(projectId) ? "{}" : $"{{\"project\":\"{projectId}\"}}", Encoding.UTF8, "application/json");
 
-            var resModels = await _httpClient.SendAsync(reqModels);
+            var resModels = await _googleHttpClient.SendAsync(reqModels);
             if (!resModels.IsSuccessStatusCode)
             {
                 throw new Exception($"FetchAvailableModels failed: {resModels.StatusCode}");
@@ -199,7 +210,7 @@ namespace AntigravityQuota
                     req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
 
                     var cts = new System.Threading.CancellationTokenSource(400);
-                    var res = await _httpClient.SendAsync(req, cts.Token);
+                    var res = await _localHttpClient.SendAsync(req, cts.Token);
                     if (res.IsSuccessStatusCode) return url;
                 }
                 catch {}
