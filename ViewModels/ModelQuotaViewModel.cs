@@ -27,7 +27,7 @@ namespace AntigravityQuota
             get
             {
                 if (Model.IsExhausted) return new SolidColorBrush(Color.FromRgb(239, 68, 68));
-                double pct = (Model.RemainingPercentage ?? 1.0) * 100;
+                int pct = (int)Math.Round((Model.RemainingPercentage ?? 1.0) * 100);
                 if (pct <= 20) return new SolidColorBrush(Color.FromRgb(239, 68, 68));
                 if (pct <= 50) return new SolidColorBrush(Color.FromRgb(251, 191, 36));
 

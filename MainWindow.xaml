@@ -440,12 +440,19 @@
                                         <TextBlock Text="Sync Settings" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSubtitleBrush}" Margin="4,16,0,8"/>
                                         <StackPanel Margin="4,0,4,16">
                                             <TextBlock Text="Quota Sync Interval" FontSize="13" Foreground="{DynamicResource TextTitleBrush}" Margin="0,0,0,6"/>
-                                            <ComboBox x:Name="SyncIntervalComboBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSyncIntervalChanged">
+                                            <ComboBox x:Name="SyncIntervalComboBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSyncIntervalChanged" Margin="0,0,0,16">
                                                 <ComboBoxItem Content="Manual Refresh Only" Tag="0"/>
                                                 <ComboBoxItem Content="Every 15 minutes" Tag="15"/>
                                                 <ComboBoxItem Content="Every 30 minutes" Tag="30"/>
                                                 <ComboBoxItem Content="Every hour" Tag="60"/>
                                                 <ComboBoxItem Content="Every 2 hours" Tag="120"/>
+                                            </ComboBox>
+
+                                            <TextBlock Text="Quota Data Source" FontSize="13" Foreground="{DynamicResource TextTitleBrush}" Margin="0,0,0,6"/>
+                                            <ComboBox x:Name="SyncSourceComboBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSyncSourceChanged">
+                                                <ComboBoxItem Content="Automatic (IDE if active)" Tag="auto"/>
+                                                <ComboBoxItem Content="Local IDE Connection" Tag="local"/>
+                                                <ComboBoxItem Content="Google Cloud API" Tag="google"/>
                                             </ComboBox>
                                         </StackPanel>
 
@@ -694,7 +701,7 @@
                                             <Path Data="M12,2L2,12H5V21H19V12H22L12,2ZM7,14L12,9L17,14H7Z" Fill="{DynamicResource ProgressGradientStartBrush}" Width="40" Height="40" Stretch="Uniform" Margin="0,0,12,0"/>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="Antigravity Quota" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}"/>
-                                                <TextBlock x:Name="AppVersionText" Text="v1.3.0" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
+                                                <TextBlock x:Name="AppVersionText" Text="v1.4.0" FontSize="11" Foreground="{DynamicResource TextSubtitleBrush}"/>
 
                                             </StackPanel>
                                         </StackPanel>

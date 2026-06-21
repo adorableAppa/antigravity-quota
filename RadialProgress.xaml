@@ -8,13 +8,11 @@
                  StrokeThickness="8" Fill="Transparent"
                  Width="108" Height="108"
                  HorizontalAlignment="Center" VerticalAlignment="Center" />
-        <!-- Progress arc rendered via PathGeometry -->
         <Path x:Name="ArcPath"
               StrokeThickness="8"
               StrokeStartLineCap="Round"
               StrokeEndLineCap="Round"
-              Fill="Transparent"
-              HorizontalAlignment="Center" VerticalAlignment="Center" />
+              Fill="Transparent" />
         <!-- Center text -->
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
             <TextBlock x:Name="PercentText" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextTitleBrush}" HorizontalAlignment="Center"/>

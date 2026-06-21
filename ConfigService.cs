@@ -16,6 +16,7 @@ namespace AntigravityQuota
         public bool startWithWindows { get; set; } = false;
         public int syncIntervalMinutes { get; set; } = 30;
         public bool notificationsEnabled { get; set; } = true;
+        public string syncMethod { get; set; } = "auto";
     }
 
     public class AccountTokenInfo

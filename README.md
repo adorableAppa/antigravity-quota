@@ -161,7 +161,24 @@ Antigravity Quota/
 - [x] **Start with Windows (Autostart):** Option to launch the app automatically at system startup
 - [ ] **Global Hotkey:** Quickly summon or hide the dashboard from anywhere with a keyboard shortcut (e.g., `Alt+Q`)
 - [x] **Theme Selector:** Manually switch between Dark and Light modes (in addition to following the Windows system theme)
-- [x] **Configurable Sync Interval:** Option for automatic background quota refreshes (e.g., every 30 minutes)
+- [x] **Configurable Sync Interval:** Option for background quota refreshes (e.g., every 30 minutes)
+
+---
+
+## ❓ FAQ
+
+### Why does "Cloud Connection" show "Unlimited" Prompt Credits?
+If your Google account is on the **Free Tier**, Google does not enforce a numeric pool of monthly credits (like 50,000 prompt credits). Instead, you are subject only to standard daily rate limits. Because Google's servers do not return a specific credit limit, the dashboard displays **"Unlimited"** (no credit pool tracked).
+
+### Why does "Local Connection" always show "500 / 50,000" (99% Used)?
+If you are on the Free Tier, the local IDE Language Server (LSP) returns hardcoded sandbox/mock values (`500` available out of `50,000` limit) so that developers can test the low-quota UI behavior, alerts, and progress rings. These are placeholders.
+
+### Does the "Prompt Credits" widget make sense if the numbers are mocked or unlimited?
+Yes! As soon as you subscribe to a paid tier (such as **Google AI Pro** / **Gemini Code Assist**), both the Google Cloud API and the local IDE connection will immediately fetch and display your **real, live credit usage** (no more mock data or "Unlimited" placeholders).
+
+### What is the difference between the Quota Data Sources?
+- **Automatic / Local Connection**: Directly queries the local running IDE Language Server. This is extremely fast, does not make external web requests, and works without a separate browser login because the IDE is already authenticated.
+- **Google Cloud API**: Calls Google Cloud Code APIs directly. Useful to bypass any cached or mocked data in the IDE and query your real-time cloud account status.
 
 ---
 

@@ -14,7 +14,7 @@ namespace AntigravityQuota
 {
     public partial class MainWindow : Window
     {
-        public const string AppVersion = "1.3.0";
+        public const string AppVersion = "1.4.0";
 
         private GitHubRelease? _latestRelease;
         private bool _isExplicitShutdown = false;
@@ -39,6 +39,7 @@ namespace AntigravityQuota
             StartWithWindowsToggle.IsOn = config.startWithWindows;
             NotificationsToggle.IsOn = config.notificationsEnabled;
             SelectSyncIntervalItem(config.syncIntervalMinutes);
+            SelectSyncSourceItem(config.syncMethod ?? "auto");
             
             _quotaService = new QuotaService();
             _oauthServer = new OAuthServer(OnLoginSuccess);
@@ -184,11 +185,10 @@ namespace AntigravityQuota
             EmptyStateCard.Visibility = Visibility.Collapsed;
             ModelsGridControl.Visibility = Visibility.Collapsed;
 
-            string method = "google";
-
             try
             {
                 var config = ConfigService.LoadGlobalConfig();
+                string method = config.syncMethod ?? "auto";
                 _currentSnapshot = await _quotaService.FetchQuotaAsync(method, config.activeAccount);
                 UpdateUI(_currentSnapshot);
                 _trayService.UpdateMenu(_currentSnapshot);
@@ -212,7 +212,7 @@ namespace AntigravityQuota
             // 1. Update Credits
             if (snapshot.PromptCredits != null)
             {
-                CreditsRadial.Percentage = snapshot.PromptCredits.RemainingPercentage;
+                CreditsRadial.Percentage = snapshot.PromptCredits.UsedPercentage;
                 CreditsRadial.StrokeColor = (Resources["ProgressGradientEndColor"] as Color?) ?? Color.FromRgb(6, 182, 212);
                 CreditsAvailableText.Text = snapshot.PromptCredits.Available.ToString("N0");
                 CreditsMonthlyText.Text = snapshot.PromptCredits.Monthly.ToString("N0");
@@ -963,6 +963,31 @@ namespace AntigravityQuota
                 if (int.TryParse(item.Tag?.ToString(), out int val) && val == minutes)
                 {
                     SyncIntervalComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        private void OnSyncSourceChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (IsLoaded && SyncSourceComboBox.SelectedItem is ComboBoxItem item)
+            {
+                string method = item.Tag?.ToString() ?? "auto";
+                var config = ConfigService.LoadGlobalConfig();
+                config.syncMethod = method;
+                ConfigService.SaveGlobalConfig(config);
+                _ = SyncQuotaAsync(true);
+            }
+        }
+
+        private void SelectSyncSourceItem(string method)
+        {
+            if (SyncSourceComboBox == null) return;
+            foreach (ComboBoxItem item in SyncSourceComboBox.Items)
+            {
+                if (item.Tag?.ToString() == method)
+                {
+                    SyncSourceComboBox.SelectedItem = item;
                     break;
                 }
             }
