@@ -96,6 +96,29 @@ namespace AntigravityQuota
             }
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern uint RegisterWindowMessage(string lpString);
+
+        private uint _restoreMessage;
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            _restoreMessage = RegisterWindowMessage("AntigravityQuota_Restore_Message");
+            var source = System.Windows.PresentationSource.FromVisual(this) as System.Windows.Interop.HwndSource;
+            source?.AddHook(WndProc);
+        }
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == _restoreMessage)
+            {
+                RestoreWindow();
+                handled = true;
+            }
+            return IntPtr.Zero;
+        }
+
         protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
         {
             base.OnKeyDown(e);

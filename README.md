@@ -180,6 +180,10 @@ Yes! As soon as you subscribe to a paid tier (such as **Google AI Pro** / **Gemi
 - **Automatic / Local Connection**: Directly queries the local running IDE Language Server. This is extremely fast, does not make external web requests, and works without a separate browser login because the IDE is already authenticated.
 - **Google Cloud API**: Calls Google Cloud Code APIs directly. Useful to bypass any cached or mocked data in the IDE and query your real-time cloud account status.
 
+### Is this app only useful if I run the Antigravity IDE?
+- **Local Connection**: Yes, this requires the Antigravity IDE to be running, because it queries the IDE's local background Language Server (LSP) process.
+- **Google Cloud API**: No! This queries Google's Cloud Code servers directly using your authenticated Google account. It works completely standalone (even if the Antigravity IDE is closed) and is useful for any developer wanting to monitor their Gemini Code Assist / Google AI Pro quotas from the Windows system tray (even when using Gemini plugins in other IDEs like VS Code or IntelliJ).
+
 ---
 
 ## 📄 License
